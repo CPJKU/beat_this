@@ -59,11 +59,11 @@ def select_augmentation(item, augmentations):
         item["spect_length"] = item["spect_lengths"][0]
         return item
 
-    def augment_tempo(item, tempo_params):
+    def augment_time(item, time_params):
         """Apply time stretching to the item."""
-        min = tempo_params["min"]
-        max = tempo_params["max"]
-        stride = tempo_params["stride"] if "stride" in tempo_params else 1
+        min = time_params["min"]
+        max = time_params["max"]
+        stride = time_params["stride"] if "stride" in time_params else 1
         percentage = np.random.choice(np.arange(min, max + 1, stride))
         item = stretch_filename(item, percentage)
         item = stretch_annotations(item, percentage)
@@ -71,18 +71,18 @@ def select_augmentation(item, augmentations):
         item["spect_length"] = item["spect_lengths"][percentage]
         return item
 
-    if 'pitch' in augmentations and 'tempo' in augmentations:
-        # if both pitch and tempo are enabled, pick one of them
+    if 'pitch' in augmentations and 'time' in augmentations:
+        # if both pitch and time are enabled, pick one of them
         if np.random.randint(2) == 0:
             # pitch
             item = augment_pitch(item, augmentations["pitch"])
         else:
             # tempo
-            item = augment_tempo(item, augmentations["tempo"])
+            item = augment_time(item, augmentations["time"])
     elif 'pitch' in augmentations:
         item = augment_pitch(item, augmentations["pitch"])
     elif 'tempo' in augmentations:
-        item = augment_tempo(item, augmentations["tempo"])
+        item = augment_time(item, augmentations["time"])
     return item
 
 def stretch_annotations(item, percentage):
@@ -93,8 +93,6 @@ def stretch_annotations(item, percentage):
     factor = 1.0 + percentage / 100
     item = dict(item)
     item["beat_time"] = item["beat_time"] / factor
-    if item["tempo"] != PAD_TOKEN:
-        item["tempo"] = item["tempo"] * factor
     return item
 
 def shift_annotations(item, semitones):
@@ -107,7 +105,7 @@ def stretch_filename(item, percentage):
     filestem = "track_ps0"
     if percentage:
         filestem = filestem + f"_ts{percentage}"
-    spect_path = Path(item["spect_folder"]) / filestem + ".npy"
+    spect_path = Path(item["spect_folder"]) / f"{filestem}.npy"
     return {**item, "spect_path": spect_path}
 
 

@@ -10,7 +10,6 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 import concurrent.futures
 from jbt.utils import PAD_TOKEN, index_to_framewise
-from sklearn.model_selection import StratifiedKFold
 from beat_this.dataset.augment import precomputed_augmentation_filenames, select_augmentation
 from beat_this.utils import load_spect
 
@@ -201,7 +200,7 @@ class BeatDataModule(pl.LightningDataModule):
         self.augmentations = augmentations
         self.test_mode = test_mode
         self.lenght_based_oversampling_factor = lenght_based_oversampling_factor
-        # check if augmentations.keys() contains only 'mask', 'pitch' and 'tempo'
+        # check if augmentations.keys() contains only 'mask', 'pitch' and 'time'
         if not set(augmentations.keys()).issubset({'mask', 'pitch', 'time'}):
             raise ValueError(f"Unsupported augmentations: {augmentations.keys()}")
 
@@ -429,6 +428,7 @@ def split_piece(audio, chunk_size, border_size=0, overlap=0, avoid_short_end=Tru
         else:
             start += chunk_size - border_size - overlap
     return chunks, starts
+
 
 def handle_datasets_mismatch(metadata_df):
     # find what datasets of DATASET_INFO are not in the dataframe
