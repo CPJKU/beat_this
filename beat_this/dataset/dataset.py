@@ -331,9 +331,7 @@ class BeatDataModule(pl.LightningDataModule):
             max_count = 50
         else:
             max_count = None
-        # create the datasets by subsampling the original datasets
         print("Creating datasets...")
-        # data_folder, metadata_df ,spect_fps=50,  train_length=1500, deterministic=False, augmentations={}
         shared_kwargs = dict(data_folder=self.data_dir,
                             spect_fps=self.spect_fps,
                             train_length=self.train_length)
