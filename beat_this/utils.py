@@ -5,8 +5,6 @@ from pathlib import Path
 import zipfile
 import wave
 import scipy.io.wavfile
-import matplotlib
-import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
 import numpy as np

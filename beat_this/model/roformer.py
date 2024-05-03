@@ -5,8 +5,6 @@ from torch import nn
 from torch.nn import Module, ModuleList
 import torch.nn.functional as F
 from functools import wraps
-from jbt.model.activation_fn import get_activation_fn
-
 from rotary_embedding_torch import RotaryEmbedding
 
 from einops import rearrange, pack, unpack
@@ -57,7 +55,7 @@ class FeedForward(Module):
         if dim_out is None:
             dim_out = dim
         dim_inner = int(dim * mult)
-        self.activation = get_activation_fn(activation, dim)
+        self.activation = nn.GELU()
         self.net = nn.Sequential(
             RMSNorm(dim),
             nn.Linear(dim, dim_inner),
@@ -70,48 +68,6 @@ class FeedForward(Module):
     def forward(self, x):
         return self.net(x)
 
-class ConvForward(Module):
-    def __init__(
-        self,
-        dim,
-        mult = 4,
-        dropout = 0.,
-        activation = "gelu",
-        size = 3,
-        arch = 'two_conv',
-    ):
-        super().__init__()
-        dim_inner = int(dim * mult)
-        self.activation = get_activation_fn(activation, dim)
-        if arch == 'two_conv':
-            self.net = nn.Sequential(
-                RMSNorm(dim),
-                nn.Conv1d(dim, dim_inner, size, padding='same'),
-                self.activation,
-                nn.Dropout(dropout),
-                nn.Conv1d(dim_inner, dim, size, padding='same'),
-                nn.Dropout(dropout)
-            )
-        elif arch == 'point_depth_point':
-            self.net = nn.Sequential(
-                RMSNorm(dim),
-                nn.Conv1d(dim, dim_inner, 1),
-                self.activation,
-                nn.Conv1d(dim_inner, dim_inner, size, padding='same', groups=dim_inner),
-                self.activation,
-                nn.Dropout(dropout),
-                nn.Conv1d(dim_inner, dim, 1),
-                nn.Dropout(dropout)
-            )
-        else:
-            raise ValueError("unknown conv block architecture %r" % arch)
-
-    def forward(self, x):
-        x = self.net[0](x)
-        x = x.transpose(-1, -2)
-        x = self.net[1:](x)
-        x = x.transpose(-1, -2)
-        return x
 
 class Attention(Module):
     def __init__(

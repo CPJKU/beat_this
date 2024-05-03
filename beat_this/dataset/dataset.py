@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 from sklearn.model_selection import train_test_split
 import concurrent.futures
-from jbt.utils import PAD_TOKEN, index_to_framewise
+from beat_this.utils import PAD_TOKEN, index_to_framewise
 from beat_this.dataset.augment import precomputed_augmentation_filenames, select_augmentation
 from beat_this.utils import load_spect
 
@@ -155,7 +155,7 @@ class BeatTrackingDataset(Dataset):
             # prepare annotations
             framewise_truth_beat, framewise_truth_downbeat, truth_orig_beat, truth_orig_downbeat = prepare_annotations(item, start_frame, end_frame, self.fps)
             
-            # prepare dictionary to return
+            # prepare the item in the form of dictionary
             item = {"spect": spect,
                     "spect_path": str(spect_path),
                     "start_frame": start_frame,
@@ -378,10 +378,10 @@ class BeatDataModule(pl.LightningDataModule):
         dataset = self.train_dataset
         all_frames = sum(i["spect_lengths"][0] for i in dataset.items)
         all_frames_db = sum(item["spect_lengths"][0] for item in dataset.items if item["loss_mask"][1] ) # consider only datasets which have downbeat information
-        any_beat_frames = sum(len(i["beat_time"]) for i in dataset.items)
+        beat_frames = sum(len(i["beat_time"]) for i in dataset.items)
         downbeat_frames = sum(1 for item in dataset.items if item["loss_mask"][1] for b in item["beat_value"] if b==1)
 
-        return {"any_beat" : int(np.round((all_frames - any_beat_frames * (widen_target_mask*2 +1)) / any_beat_frames)),
+        return {"beat" : int(np.round((all_frames - beat_frames * (widen_target_mask*2 +1)) / beat_frames)),
                 "downbeat" : int(np.round((all_frames_db - downbeat_frames * (widen_target_mask*2 +1)) / downbeat_frames)),
                 }
 

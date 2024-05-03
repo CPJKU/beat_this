@@ -10,7 +10,7 @@ from beartype.typing import Tuple, Optional, List, Callable
 from beartype import beartype
 from einops import rearrange
 
-import jbt.model.roformer as roformer
+import beat_this.model.roformer as roformer
 
 
 class BeatThis(nn.Module):
@@ -34,42 +34,46 @@ class BeatThis(nn.Module):
 
         # create the frontend
         stem = nn.Sequential(
-            Rearrange("b t f -> b f t"),
-            nn.BatchNorm1d(spect_dim),
-            Rearrange("b f t -> b 1 f t"),
-            nn.Conv2d(in_channels=1, out_channels=stem_dim,
-                      kernel_size=(4, 3), stride=(4, 1), padding=(0, 1)),
-            nn.BatchNorm2d(stem_dim),
-            nn.GELU(),
+            OrderedDict(
+                rearrange_tf=Rearrange("b t f -> b f t"),
+                bn1d=nn.BatchNorm1d(spect_dim),
+                add_channel=Rearrange("b f t -> b 1 f t"),
+                conv2d=nn.Conv2d(in_channels=1, out_channels=stem_dim,
+                        kernel_size=(4, 3), stride=(4, 1), padding=(0, 1)),
+                bn2d=nn.BatchNorm2d(stem_dim),
+                activation=nn.GELU(),
+            )
         )
         frontend_blocks = []
         _dim = stem_dim
         for _ in range(3):
             frontend_blocks.append(
                 nn.Sequential(
-                    PartialRoformer(  # frequency directed partial transformer
-                        dim=_dim,
-                        dim_head=head_dim,
-                        n_head=_dim // head_dim,
-                        direction="F",
-                        rotary_embed=rotary_embed,
-                        dropout=dropout,
-                    ),
-                    PartialRoformer(  # time directed partial transformer
-                        dim=_dim,
-                        dim_head=head_dim,
-                        n_head=_dim // head_dim,
-                        direction="T",
-                        rotary_embed=rotary_embed,
-                        dropout=dropout,
-                    ),
-                    # conv block
-                    nn.Conv2d(in_channels=_dim, out_channels=_dim * 2,
-                              kernel_size=(2, 3), stride=(2, 1), padding=(0, 1)),
-                    # out_channels = 64, 128, 256
-                    # freqs = 16, 8, 4 (due to the stride=2)
-                    nn.BatchNorm2d(_dim*2),
-                    nn.GELU(),
+                    OrderedDict(
+                        fpartial=PartialRoformer(  # frequency directed partial transformer
+                            dim=_dim,
+                            dim_head=head_dim,
+                            n_head=_dim // head_dim,
+                            direction="F",
+                            rotary_embed=rotary_embed,
+                            dropout=dropout,
+                        ),
+                        tpartial=PartialRoformer(  # time directed partial transformer
+                            dim=_dim,
+                            dim_head=head_dim,
+                            n_head=_dim // head_dim,
+                            direction="T",
+                            rotary_embed=rotary_embed,
+                            dropout=dropout,
+                        ),
+                        # conv block
+                        conv2d=nn.Conv2d(in_channels=_dim, out_channels=_dim * 2,
+                                kernel_size=(2, 3), stride=(2, 1), padding=(0, 1)),
+                        # out_channels : 64, 128, 256
+                        # freqs : 16, 8, 4 (due to the stride=2)
+                        norm=nn.BatchNorm2d(_dim*2),
+                        activation=nn.GELU(),
+                    )
                 )
             )
             _dim = _dim * 2
