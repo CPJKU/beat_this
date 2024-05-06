@@ -159,10 +159,14 @@ class SumHead(nn.Module):
     def forward(self, x):
         beat = self.beat_lin(x)
         downbeat = self.downbeat_lin(x)
+        # remove last dimension
+        beat = rearrange(beat, "b t 1 -> b t")
+        downbeat = rearrange(downbeat, "b t 1 -> b t")
+        # aggregate beats and downbeats prediction
         # autocast is necessary to avoid numerical issues causing NaNs
         with torch.autocast(beat.device.type, enabled=False):
             beat = beat.float() + downbeat.float()
-        return beat, downbeat
+        return {"beat":beat, "downbeat": downbeat}
 
 
 if __name__ == "__main__":

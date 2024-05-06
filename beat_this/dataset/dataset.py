@@ -144,8 +144,7 @@ class BeatTrackingDataset(Dataset):
                 end_frame = original_length
             
             # load spectrogram
-            spect_path = Path(item["spect_folder"]) / item["spect_path"]
-            spect = load_spect(spect_path, start=start_frame, stop=end_frame)
+            spect = load_spect(item["spect_path"], start=start_frame, stop=end_frame)
 
             # augment the spectrogram with mask augmentation if needed
             if "mask" in self.augmentations.keys():
@@ -155,9 +154,9 @@ class BeatTrackingDataset(Dataset):
             # prepare annotations
             framewise_truth_beat, framewise_truth_downbeat, truth_orig_beat, truth_orig_downbeat = prepare_annotations(item, start_frame, end_frame, self.fps)
             
-            # prepare the item in the form of dictionary
+            # restructure the item dict with the correct training information
             item = {"spect": spect,
-                    "spect_path": str(spect_path),
+                    "spect_path": str(item["spect_path"]),
                     "start_frame": start_frame,
                     "truth_beat": framewise_truth_beat,
                     "truth_downbeat": framewise_truth_downbeat,

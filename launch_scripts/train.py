@@ -22,24 +22,25 @@ torch.multiprocessing.set_sharing_strategy("file_system")
 JBT_SEED = int(os.environ.get("JBT_SEED", 0))
 seed_everything(JBT_SEED, workers=True)
 
-# set for flash attention
-torch.backends.cuda.enable_flash_sdp(True)
-torch.backends.cuda.enable_mem_efficient_sdp(False)
-torch.backends.cuda.enable_math_sdp(False)
-
-# for A40
-torch.set_float32_matmul_precision("medium")
+# set for flash attention    
+torch.backends.cuda.enable_flash_sdp(False)
+torch.backends.cuda.enable_mem_efficient_sdp(True)
+torch.backends.cuda.enable_math_sdp(True)
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--gpus", type=str, default="[0]")
+    parser.add_argument("--gpu", type=int, default=2)
+    parser.add_argument("--flash_attention", default=True,
+        action=argparse.BooleanOptionalAction)
     parser.add_argument(
         "--compile",
+        action='store', 
+        nargs="*",
         type=str,
-        metavar="PARTS",
-        default="frontend,transformer_encoder",
-        help="Which model parts to compile (default: %(default)s)",
+        default=[],
+        # default=["frontend","transformer_blocks"],
+        help="Which model parts to compile, among frontend, transformer_encoder"
     )
     parser.add_argument("--n_layers", type=int, default=6)
     parser.add_argument("--n_hidden", type=int, default=512)
@@ -54,7 +55,7 @@ def main():
     parser.add_argument(
         "--logger", type=str, choices=["wandb", "none"], default="none"
     )
-    parser.add_argument("--num_workers", type=int, default=20)
+    parser.add_argument("--num_workers", type=int, default=1)
     parser.add_argument("--n_heads", type=int, default=16)
     parser.add_argument("--fps", type=int, default=50, help="The spectrograms fps.")
     parser.add_argument(
@@ -185,20 +186,15 @@ def main():
         widen_target_mask=3
     )
     print("Using positive weights: ", pos_weights)
-    model = PLBeatThis()
-    for part in args.compile.split(","):
-        if part == "frontend_final":
-            model.module.frontend[-1] = torch.compile(model.module.frontend[-1])
-        elif hasattr(model.module, part):
-            setattr(model.module, part, torch.compile(getattr(model.module, part)))
+    pl_model = PLBeatThis()
+    for part in args.compile:
+        if hasattr(pl_model.model, part):
+            setattr(pl_model.model, part, torch.compile(getattr(pl_model.model, part)))
+            print("Will compile model", part)
         else:
-            continue
-        print("Will compile model", part)
+            print("The model is missing the part", part, "to compile")
 
-    if args.comment:
-        name = args.comment
-    else:
-        name = f"BTr-{args.n_layers}x{args.n_hidden}x{args.dim_feedforward}lr={args.lr}-wd={args.weight_decay}-dr={args.dropout}-act={args.activation}-heads={args.n_heads}-pos_enc={args.pos_enc}-loss={args.loss}-batch_size={args.batch_size}-agb={args.accumulate_grad_batches}-lsm={args.label_smoothing}-oversample={args.lenght_based_oversampling_factor}--clean={args.clean_dataset}"
+    name = f"BTr-{args.loss}-lr{args.lr}-n{args.n_layers}-h{args.n_hidden}-d{args.dropout}-bs{args.batch_size}-aug{args.time_augmentation}{args.pitch_augmentation}{args.mask_augmentation}"
 
     if args.logger == "wandb":
         # TODO: implement wandb logger
@@ -213,7 +209,7 @@ def main():
     trainer = Trainer(
         max_epochs=args.max_epochs,
         accelerator="auto",
-        devices=eval(args.gpus), 
+        devices=[args.gpu], 
         num_sanity_val_steps=1,
         logger=logger,
         callbacks=callbacks,
@@ -223,10 +219,10 @@ def main():
         check_val_every_n_epoch=args.val_frequency,
     )
 
-    
+    trainer.fit(pl_model, datamodule)
     trainer.test(
-        model, datamodule
-    )  # ,ckpt_path=checkpoint_callback.best_model_path)
+        pl_model, datamodule
+    )  
 
 
 if __name__ == "__main__":

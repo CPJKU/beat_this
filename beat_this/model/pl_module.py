@@ -76,21 +76,22 @@ class PLBeatThis(LightningModule):
             self.postprocessor = None
         self.eval_trim_beats = eval_trim_beats
         self.predict_full_pieces = predict_full_pieces
+        self.metrics = ComputeMetrics(eval_trim_beats=eval_trim_beats)
         
 
     def _compute_loss(self, batch, model_prediction):
         losses = {}
         # set up the mask: a combination of the padding mask and the annotation mask (if pieces have downbeat annotations)
         mask = batch["padding_mask"] * batch["loss_mask"][:,1][:,None]
-        for target in ["beat","downbeat"]: # iterate through the targets
-            loss = self.loss(model_prediction[target], batch[f"truth_{target}"], mask)
-            losses[target] = loss
+        losses["beat"] = self.beat_loss(model_prediction["beat"], batch["truth_beat"].float(), mask)
+        losses["downbeat"] = self.downbeat_loss(model_prediction["downbeat"], batch["truth_downbeat"].float(), mask)
         # sum the losses
         losses["total_loss"] = sum(losses.values())
         return losses
 
     def _compute_slow_metrics(self, batch, model_prediction, step="val"):
         # compute for beat
+        shared_out = {}
         shared_out, metrics_beat, _ = self._compute_slow_metrics_target(shared_out, batch, model_prediction, target="beat", step=step)	
         # compute for downbeat
         shared_out, metrics_downbeat = self._compute_slow_metrics_target(shared_out, batch,model_prediction, target="downbeat", step=step)
@@ -127,16 +128,15 @@ class PLBeatThis(LightningModule):
             # take the ground truth from the original version, so there are no quantization errors
             piece_truth_time = np.frombuffer(truth_orig_target)
             # run evaluation
-            metrics = self.beat_metric(piece_truth_time, piece_pred_time, step=step)
+            metrics = self.metrics(piece_truth_time, piece_pred_time, step=step)
             
             return metrics, piece_pred_time, piece_truth_time
 
         with ThreadPoolExecutor() as executor:
             (piecewise_metrics, pred_time, truth_time) = zip(*executor.map(compute_item,
-                                                shared_out[f"pred_{target}_peaks"], 
+                                                pred_peaks, 
                                                 batch["padding_mask"],
                                                 batch[f"truth_orig_{target}"],
-                                                batch["start_frame"],
                                                 ))
 
         
@@ -164,30 +164,30 @@ class PLBeatThis(LightningModule):
 
     def training_step(self, batch, batch_idx):
         # run the model
-        model_prediction = self.model(batch["audio"])
+        model_prediction = self.model(batch["spect"])
         # compute loss
         losses = self._compute_loss(batch, model_prediction)
-        self.log_losses(losses, len(batch["audio"]), "train")
+        self.log_losses(losses, len(batch["spect"]), "train")
         return losses["total_loss"]
 
     def validation_step(self, batch, batch_idx):
         # run the model
-        model_prediction = self.module(batch["audio"])
+        model_prediction = self.model(batch["spect"])
         # compute loss and slow metrics
         losses = self._compute_loss(batch, model_prediction)
         shared_out, metrics = self._compute_slow_metrics(batch, model_prediction, step="val")
         # log
-        self.log_losses(losses, len(batch["audio"]), "val")
-        self.log_slow_metrics(metrics, batch["audio"].shape[0], "val")
+        self.log_losses(losses, len(batch["spect"]), "val")
+        self.log_slow_metrics(metrics, batch["spect"].shape[0], "val")
 
     def test_step(self, batch, batch_idx):
         # run the model
-        model_prediction = self.module(batch["audio"], batch["padding_mask"])
+        model_prediction = self.model(batch["audio"])
         # compute loss and slow metrics
         shared_out, metrics = self._compute_slow_metrics(batch, model_prediction, step="test")
         # log
-        self.log_losses(shared_out, len(batch["audio"]), "test")
-        self.log_slow_metrics(metrics, batch["audio"].shape[0], "test")
+        self.log_losses(shared_out, len(batch["spect"]), "test")
+        self.log_slow_metrics(metrics, batch["spect"].shape[0], "test")
 
         self._log_plots(batch,shared_out, step="test", log_all=True, batch_idx=batch_idx,target="beat")
         if "downbeat" in self.required_outputs:

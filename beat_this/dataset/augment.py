@@ -83,6 +83,10 @@ def select_augmentation(item, augmentations):
         item = augment_pitch(item, augmentations["pitch"])
     elif 'tempo' in augmentations:
         item = augment_time(item, augmentations["time"])
+    else:
+        # set spect_length to the original value and spect_path to the original file
+        item["spect_length"] = item["spect_lengths"][0]
+        item["spect_path"] = Path(item["spect_folder"]) / "track_ps0.npy"
     return item
 
 def stretch_annotations(item, percentage):
