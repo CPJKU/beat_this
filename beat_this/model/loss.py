@@ -36,11 +36,15 @@ from einops import rearrange
 
 class ShiftTolerantBCELoss(torch.nn.Module):
     """
-    BCE loss applied to only the positive or negative targets, with optional
-    temporal max-pooling of predictions or targets. Can be used to recover
-    variants of WideTargetMaskedBCELoss and ShiftTolerantBCELoss. When `hinge`
-    is given, predictions closer than `hinge` to the target are clamped. When
-    `focal` is given, treats it as the gamma exponent for a focal loss.
+    BCE loss applied separately to positive and negative targets with
+    temporal max-pooling. It is meant to accept predictions that are
+    in close temporal proximity to the target.
+    The target and preds are cropped to ignore the edges of the sequence,
+    where max-pooling would introduce artifacts.
+
+    Args:
+        pos_weight (int): weight of positive targets
+        spread_preds (int): amount of temporal max-pooling applied to predictions
     """
     def __init__(self, pos_weight:int=1, spread_preds=3):
         super().__init__()
@@ -56,10 +60,12 @@ class ShiftTolerantBCELoss(torch.nn.Module):
 
     def crop(self, x, desired_length):
         amount = (x.shape[-1] - desired_length) // 2
-        if amount:
+        if amount > 0:
             return x[..., amount:-amount]
-        else:
+        elif amount == 0:
             return x
+        else:
+            raise ValueError("Desired length must be smaller than input length")
 
 
     def forward(self, preds, targets, mask):
@@ -77,4 +83,4 @@ class ShiftTolerantBCELoss(torch.nn.Module):
         cropped_targets = self.crop(targets, output_length)
         loss_negative = F.binary_cross_entropy_with_logits(cropped_preds, cropped_targets, weight=(1 - cropped_targets)*cropped_mask, reduction='none')
         # average piecewise and return
-        return (loss_positive + loss_negative).mean(-1)
+        return (loss_positive + loss_negative).mean()
