@@ -48,7 +48,6 @@ class FeedForward(Module):
         dim,
         mult = 4,
         dropout = 0.,
-        activation = "gelu",
         dim_out = None,
     ):
         super().__init__()
@@ -132,7 +131,6 @@ class Transformer(Module):
         ff_mult = 4,
         norm_output = True,
         rotary_embed = None,
-        activation = "gelu",
         gating = True,
         return_all_layers = False,
     ):
@@ -140,7 +138,7 @@ class Transformer(Module):
         self.layers = ModuleList([])
 
         for _ in range(depth):
-            ff = FeedForward(dim = dim, mult = ff_mult, dropout = ff_dropout, activation = activation)
+            ff = FeedForward(dim = dim, mult = ff_mult, dropout = ff_dropout)
             self.layers.append(ModuleList([
                 Attention(dim = dim, dim_head = dim_head, heads = heads, dropout = attn_dropout, rotary_embed = rotary_embed, gating = gating),
                 ff,
