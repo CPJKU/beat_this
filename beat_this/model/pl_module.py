@@ -9,12 +9,8 @@ import torch.nn.functional as F
 import numpy as np
 from pytorch_lightning import LightningModule
 from beat_this.model.beat_tracker import BeatThis
-try:
-    from madmom.features.downbeats import DBNDownBeatTrackingProcessor
-except:
-    madmom = None
+from beat_this.model.postprocessor import Postprocessor
 import mir_eval
-from collections import ChainMap
 import torch.nn.functional as F
 import beat_this.model.loss
 try:
@@ -70,13 +66,10 @@ class PLBeatThis(LightningModule):
         else:
             raise ValueError("loss_type must be one of 'shift_tolerant_weighted_bce', 'weighted_bce', 'bce'")
 
-        if use_dbn:
-            self.postprocessor = DBNDownBeatTrackingProcessor(beats_per_bar=[3, 4], min_bpm=55.0, max_bpm=215.0, fps=self.fps, transition_lambda=100, )
-        else:
-            self.postprocessor = None
+        self.postprocessor = Postprocessor(type="dbn" if use_dbn else "minimal", fps=fps)
         self.eval_trim_beats = eval_trim_beats
         self.predict_full_pieces = predict_full_pieces
-        self.metrics = ComputeMetrics(eval_trim_beats=eval_trim_beats)
+        self.metrics = Metrics(eval_trim_beats=eval_trim_beats)
         
 
     def _compute_loss(self, batch, model_prediction):
@@ -86,56 +79,34 @@ class PLBeatThis(LightningModule):
         losses["beat"] = self.beat_loss(model_prediction["beat"], batch["truth_beat"].float(), mask)
         losses["downbeat"] = self.downbeat_loss(model_prediction["downbeat"], batch["truth_downbeat"].float(), mask)
         # sum the losses
-        losses["total_loss"] = sum(losses.values())
+        losses["total"] = sum(losses.values())
         return losses
 
-    def _compute_slow_metrics(self, batch, model_prediction, step="val"):
+    def _compute_metrics(self, batch, model_prediction, step="val"):
         # compute for beat
-        shared_out = {}
-        shared_out, metrics_beat, _ = self._compute_slow_metrics_target(shared_out, batch, model_prediction, target="beat", step=step)	
+        metrics_beat, piecewise_beat = self._compute_metrics_target(batch, model_prediction, target="beat", step=step)	
         # compute for downbeat
-        shared_out, metrics_downbeat = self._compute_slow_metrics_target(shared_out, batch,model_prediction, target="downbeat", step=step)
-        # compute for dbn if required (beat and downbeats)
-        if self.use_dbn:
-            raise NotImplementedError("DBN not implemented yet")
+        metrics_downbeat, piecewise_downbeat = self._compute_metrics_target(batch,model_prediction, target="downbeat", step=step)
         
-        # concatenate metrics dictionary
-        metrics = ChainMap(metrics_beat, metrics_downbeat)
-        
-        return shared_out, metrics
+        # concatenate dictionaries
+        metrics = {**metrics_beat, **metrics_downbeat}
+        piecewise = {**piecewise_beat, **piecewise_downbeat}
+
+        return metrics, piecewise
     
-    def _compute_slow_metrics_target(self, shared_out, batch,model_prediction, target="beat", step="val"):
-        # set padded elements to -1000 (= probability zero even in float64)
-        pred_logits = model_prediction[target].masked_fill(
-            ~batch["padding_mask"], -1000)
-        # pick maxima within +/- 70ms
-        pred_peaks = pred_logits.masked_fill(
-            pred_logits != F.max_pool1d(pred_logits, int(np.ceil(0.07*self.fps)*2+1), 1, int(np.ceil(0.07*self.fps))), -1000)
-        # keep maxima with over 0.5 probability (logit > 0)
-        pred_peaks = (pred_peaks > 0)
-        
-        # iterate through single pieces in the batch to compute metrics
-        def compute_item(padded_piece_pred_peaks, piece_mask, truth_orig_target):
-            # unpad the predictions by truncating the padding positions
-            piece_pred_peaks = padded_piece_pred_peaks[piece_mask]
-            # pass from a boolean array to a list of times in frames.
-            piece_pred_frame = torch.nonzero(piece_pred_peaks)
-            #TODO: is 1 the correct width?
-            # remove duplicates peaks 
-            piece_pred_frame = torch.tensor(deduplicate_peaks(piece_pred_frame, width=1))
-            # convert from frame to seconds
-            piece_pred_time = (piece_pred_frame / self.fps).cpu().numpy()
+    def _compute_metrics_target(self, batch, model_prediction, target="beat", step="val"):  
+
+        def compute_item(pospt_pred, truth_orig_target):
             # take the ground truth from the original version, so there are no quantization errors
             piece_truth_time = np.frombuffer(truth_orig_target)
             # run evaluation
-            metrics = self.metrics(piece_truth_time, piece_pred_time, step=step)
+            metrics = self.metrics(piece_truth_time, pospt_pred, step=step)
             
-            return metrics, piece_pred_time, piece_truth_time
+            return metrics, piece_truth_time
 
         with ThreadPoolExecutor() as executor:
-            (piecewise_metrics, pred_time, truth_time) = zip(*executor.map(compute_item,
-                                                pred_peaks, 
-                                                batch["padding_mask"],
+            (piecewise_metrics, truth_time) = zip(*executor.map(compute_item,
+                                                model_prediction[f"postp_{target}"], 
                                                 batch[f"truth_orig_{target}"],
                                                 ))
 
@@ -143,24 +114,22 @@ class PLBeatThis(LightningModule):
         # average the beat metrics across the dictionary
         batch_metric = {key + f"_{target}": np.mean([x[key] for x in piecewise_metrics]) for key in piecewise_metrics[0].keys()}
         # save non-averaged results for piecewise evaluation
-        shared_out[f"F-measure_{target}"] = [p["F-measure"] for p in piecewise_metrics]
-        shared_out[f"CMLt_{target}"] = [p["CMLt"] for p in piecewise_metrics]
-        shared_out[f"AMLt_{target}"] = [p["AMLt"] for p in piecewise_metrics]
-        shared_out[f"pred_time_{target}"] = pred_time
-        shared_out[f"truth_time_{target}"] = truth_time
+        piecewise = {}
+        if step == "test":
+            piecewise[f"F-measure_{target}"] = [p["F-measure"] for p in piecewise_metrics]
+            piecewise[f"CMLt_{target}"] = [p["CMLt"] for p in piecewise_metrics]
+            piecewise[f"AMLt_{target}"] = [p["AMLt"] for p in piecewise_metrics]
  
-        return shared_out, batch_metric
+        return batch_metric, piecewise
 
     def log_losses(self, losses, batch_size, step="train"):
-        # log for separate targets
-        for target in "beat", "downbeat":
-            self.log(f"{step}_loss_{target}", losses[f"loss_{target}"].item(), prog_bar=False, on_step=False, on_epoch=True, batch_size=batch_size, sync_dist=True)
-        # log the total loss
-        self.log(f"{step}_loss", losses["total_loss"].item(), prog_bar=True, on_step=False, on_epoch=True, batch_size=batch_size, sync_dist=True)
-
-    def log_slow_metrics(self, metrics, batch_size):
+        # log for separate targets and total loss
+        for target in "beat", "downbeat", "total":
+            self.log(f"{step}_loss_{target}", losses[target].item(), prog_bar=target=="total", on_step=False, on_epoch=True, batch_size=batch_size, sync_dist=True)
+    
+    def log_metrics(self, metrics, batch_size, step="val"):
         for key, value in metrics.items():
-            self.log(f"{key}", value, prog_bar=False, on_step=False, on_epoch=True, batch_size=batch_size, sync_dist=True)
+            self.log(f"{step}_{key}", value, prog_bar=False, on_step=False, on_epoch=True, batch_size=batch_size, sync_dist=True)
 
     def training_step(self, batch, batch_idx):
         # run the model
@@ -168,30 +137,29 @@ class PLBeatThis(LightningModule):
         # compute loss
         losses = self._compute_loss(batch, model_prediction)
         self.log_losses(losses, len(batch["spect"]), "train")
-        return losses["total_loss"]
+        return losses["total"]
 
     def validation_step(self, batch, batch_idx):
         # run the model
         model_prediction = self.model(batch["spect"])
-        # compute loss and slow metrics
+        # compute loss
         losses = self._compute_loss(batch, model_prediction)
-        shared_out, metrics = self._compute_slow_metrics(batch, model_prediction, step="val")
+        # postprocess the predictions
+        model_prediction = self.postprocessor(model_prediction, batch["padding_mask"])
+        # compute the metrics
+        metrics, piecewise = self._compute_metrics(batch, model_prediction, step="val")
         # log
         self.log_losses(losses, len(batch["spect"]), "val")
-        self.log_slow_metrics(metrics, batch["spect"].shape[0], "val")
+        self.log_metrics(metrics, batch["spect"].shape[0], "val")
 
     def test_step(self, batch, batch_idx):
         # run the model
-        model_prediction = self.model(batch["audio"])
+        model_prediction = self.model(batch["spect"])
         # compute loss and slow metrics
-        shared_out, metrics = self._compute_slow_metrics(batch, model_prediction, step="test")
+        shared_out, metrics = self._compute_metrics(batch, model_prediction, step="test")
         # log
         self.log_losses(shared_out, len(batch["spect"]), "test")
         self.log_slow_metrics(metrics, batch["spect"].shape[0], "test")
-
-        self._log_plots(batch,shared_out, step="test", log_all=True, batch_idx=batch_idx,target="beat")
-        if "downbeat" in self.required_outputs:
-            self._log_plots(batch,shared_out, step="test", log_all=True, batch_idx=batch_idx, target="downbeat")
 
     # def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0, overlap: int = 0, overlaps: str = 'keep_first') -> Any:
     #     """
@@ -252,7 +220,7 @@ class PLBeatThis(LightningModule):
     #         # run the model
     #         model_prediction = self.module(batch["audio"], batch["padding_mask"])
 
-    #     shared_out, metrics = self._compute_slow_metrics(batch, model_prediction, step="test")
+    #     shared_out, metrics = self._compute_metrics(batch, model_prediction, step="test")
     #     metadata = dict(audio_path=batch["audio_path"])
     #     return dict(ChainMap(shared_out, metrics, metadata))
 
@@ -277,19 +245,18 @@ class PLBeatThis(LightningModule):
         return result
 
 
-class ComputeMetrics:
+class Metrics:
     def __init__(self, eval_trim_beats : int) -> None:
         self.min_beat_time = eval_trim_beats
         
     def __call__(self, truth, preds, step) -> Any:
         truth = mir_eval.beat.trim_beats(truth, min_beat_time=self.min_beat_time)
         preds = mir_eval.beat.trim_beats(preds, min_beat_time=self.min_beat_time)
-        if step == "val": # trim beats is included in mir_eval.beat.evaluate, but not in f_score
+        if step == "val": # limit the metrics that are computed during validation to speed up training
             fmeasure =  mir_eval.beat.f_measure(truth, preds)
             cemgil = mir_eval.beat.cemgil(truth, preds)
-            # put it in a dictionary to mimic the behaviour of mir_eval.beat.evaluate
             return {'F-measure':fmeasure, "Cemgil":cemgil}
-        elif step == "test":
+        elif step == "test": # compute all metrics during testing
             CMLc, CMLt, AMLc, AMLt = mir_eval.beat.continuity(truth, preds)
             fmeasure =  mir_eval.beat.f_measure(truth, preds)
             cemgil = mir_eval.beat.cemgil(truth, preds)
@@ -326,26 +293,3 @@ class CosineWarmupScheduler(torch.optim.lr_scheduler._LRScheduler):
             lr_factor = self.raise_to * min(progress, 1)
         return lr_factor
 
-
-def deduplicate_peaks(peaks, width=1):
-    """
-    Replaces groups of adjacent peak frame indices that are each not more
-    than `width` frames apart by the average of the frame indices.
-    """
-    result = []
-    peaks = map(int, peaks)  # ensure we get ordinary Python int objects
-    try:
-        p = next(peaks)
-    except StopIteration:
-        return result
-    c = 1
-    for p2 in peaks:
-        if p2 - p <= width:
-            c += 1
-            p += (p2 - p) / c  # update mean
-        else:
-            result.append(p)
-            p = p2
-            c = 1
-    result.append(p)
-    return result
