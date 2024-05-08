@@ -111,6 +111,7 @@ class BeatThis(nn.Module):
                     module.weight[module.padding_idx].fill_(0)
 
     def forward(self, x):
+        x = self.input_dropout(x)
         x = self.frontend(x)
         x = self.input_dropout(x)
         x = self.transformer_blocks(x)
