@@ -100,6 +100,7 @@ class BeatTrackingDataset(Dataset):
                 return
 
         # create a loss mask depending on the annotations that are supposed to be there
+        # TODO: change this with a downbeat mask
         loss_mask = [True, DATASET_INFO[df_row["dataset"]]["downbeat"]]
         # select all values in columns that start with spect_len, e.g. spect_len_ts-20
         spect_lengths = {int(key.replace("spect_len_ts","")): int(value) for key, value in df_row.items() if key.startswith("spect_len")}
@@ -285,7 +286,7 @@ class BeatDataModule(pl.LightningDataModule):
         train_idx = np.concatenate([train_idx, train_only_idx])
         # treat rwc as 3 different datasets with rwc_popular, rwc_jazz, rwc_classical, rwc_royalty-free. Necessary for literature-compatible dataset selection
         if "rwc" in self.metadata_df.dataset.unique():
-            self.metadata_df.loc[self.metadata_df.dataset == "rwc", "dataset"] = self.metadata_df.loc[self.metadata_df.dataset == "rwc", "processed_path"].apply(lambda p: "rwc_" + Path(p).name.split("_")[1])
+            self.metadata_df.loc[self.metadata_df.dataset == "rwc", "dataset"] = self.metadata_df.loc[self.metadata_df.dataset == "rwc", "spect_folder"].apply(lambda p: "rwc_" + Path(p).name.split("_")[1])
         # limit the training dataset if self.train_datasets is not None
         if self.train_datasets is not None:
             if self.train_datasets == ["hung"]:
@@ -304,7 +305,7 @@ class BeatDataModule(pl.LightningDataModule):
         if self.lenght_based_oversampling_factor:
             # oversample the training set according to the audio_length information, so that long pieces are more likely to be sampled
             old_len = len(train_idx)
-            piece_oversampling_factor = np.round(self.lenght_based_oversampling_factor * self.metadata_df["audio_length"][train_idx].values / (512*self.maximum_train_length)).astype(int)
+            piece_oversampling_factor = np.round(self.lenght_based_oversampling_factor * self.metadata_df["spect_len_ts0"][train_idx].values / (self.train_length)).astype(int)
             piece_oversampling_factor = np.clip(piece_oversampling_factor, 1, None)
             train_idx = np.repeat(train_idx, piece_oversampling_factor)
             print(f"Training set oversampled from {old_len} to {len(train_idx)} excerpts.")
@@ -387,15 +388,15 @@ class BeatDataModule(pl.LightningDataModule):
 
 def prepare_annotations(item, start_frame, end_frame, fps):
     truth_bdb_time = item["beat_time"]
+    truth_bdb_value = item["beat_value"]
     # convert beat time from seconds to frame
     truth_bdb_frame = (truth_bdb_time * fps).round().astype(int)
-    truth_bdb_value = item["beat_value"]
     # form annotations excerpt
     # filter out the annotations that are earlier than the start and shift left
     truth_bdb_frame -= start_frame 
     idx = np.searchsorted(truth_bdb_frame, 0)
     truth_bdb_frame = truth_bdb_frame[idx:]
-    truth_bdb_frame = truth_bdb_frame[idx:]
+    truth_bdb_value = truth_bdb_value[idx:]
     # filter out the annotations that are later than the end
     idx = np.searchsorted(truth_bdb_frame, end_frame - start_frame)
     truth_bdb_frame = truth_bdb_frame[:idx]
@@ -403,12 +404,12 @@ def prepare_annotations(item, start_frame, end_frame, fps):
     # create beat and downbeat separated annotations
     truth_beat = truth_bdb_frame
     truth_downbeat = truth_bdb_frame[truth_bdb_value == 1]
-    # transform beat downbeat (and variations) to frame-wise annotations
+    # transform beat downbeat to frame-wise annotations
     framewise_truth_beat = index_to_framewise(truth_beat, end_frame - start_frame)
     framewise_truth_downbeat = index_to_framewise(truth_downbeat, end_frame - start_frame)
     # create orig beat, downbeat annotations for unquantized evaluation
-    truth_orig_beat = truth_bdb_time
-    truth_orig_downbeat = truth_bdb_time[item["beat_value"] == 1]
+    truth_orig_beat = item["beat_time"]
+    truth_orig_downbeat = truth_bdb_time[item["beat_value"] == 1] # (use the full beat_value)
     # filter out the annotations that are outside the excerpt, and shift them left to the excerpt time
     truth_orig_beat = truth_orig_beat[(truth_orig_beat >= start_frame/fps) & (truth_orig_beat < end_frame/fps)] - (start_frame/fps)
     truth_orig_downbeat = truth_orig_downbeat[(truth_orig_downbeat >= start_frame/fps) & (truth_orig_downbeat < end_frame/fps)] - (start_frame/fps)
