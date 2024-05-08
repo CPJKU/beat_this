@@ -35,7 +35,6 @@ class PLBeatThis(LightningModule):
         pos_weights = {"beat": 1, "downbeat": 1},
         head_dim = 32,
         loss_type = "shift_tolerant_weighted_bce",
-        optimizer = 'adamw',
         warmup_steps = 1000,
         max_epochs = 100,
         use_dbn = False,
@@ -49,7 +48,6 @@ class PLBeatThis(LightningModule):
         self.fps = fps
         # create model
         self.model = BeatThis(spect_dim=spect_dim, total_dim=total_dim, ff_mult=ff_mult, stem_dim=stem_dim, n_layers=n_layers, head_dim=head_dim, dropout=dropout)
-        self.optimizer = optimizer
         self.warmup_steps = warmup_steps
         self.max_epochs = max_epochs
         # set up the losses
@@ -58,11 +56,11 @@ class PLBeatThis(LightningModule):
             self.beat_loss = beat_this.model.loss.ShiftTolerantBCELoss(pos_weight=pos_weights["beat"])
             self.downbeat_loss = beat_this.model.loss.ShiftTolerantBCELoss(pos_weight=pos_weights["downbeat"])
         elif loss_type == "weighted_bce":
-            self.beat_loss = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weights["beat"])
-            self.downbeat_loss = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weights["downbeat"])
+            self.beat_loss = beat_this.model.loss.MaskedBCELoss(pos_weight=pos_weights["beat"])
+            self.downbeat_loss = beat_this.model.loss.MaskedBCELoss(pos_weight=pos_weights["downbeat"])
         elif loss_type == "bce":
-            self.beat_loss = torch.nn.BCEWithLogitsLoss()
-            self.downbeat_loss = torch.nn.BCEWithLogitsLoss()
+            self.beat_loss = beat_this.model.loss.MaskedBCELoss()
+            self.downbeat_loss = beat_this.model.loss.MaskedBCELoss()
         else:
             raise ValueError("loss_type must be one of 'shift_tolerant_weighted_bce', 'weighted_bce', 'bce'")
 
@@ -129,7 +127,7 @@ class PLBeatThis(LightningModule):
     
     def log_metrics(self, metrics, batch_size, step="val"):
         for key, value in metrics.items():
-            self.log(f"{step}_{key}", value, prog_bar=False, on_step=False, on_epoch=True, batch_size=batch_size, sync_dist=True)
+            self.log(f"{step}_{key}", value, prog_bar=key.startswith("F-measure"), on_step=False, on_epoch=True, batch_size=batch_size, sync_dist=True)
 
     def training_step(self, batch, batch_idx):
         # run the model
