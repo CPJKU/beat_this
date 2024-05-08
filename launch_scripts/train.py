@@ -2,9 +2,7 @@ from pytorch_lightning.loggers import WandbLogger, TensorBoardLogger
 from pytorch_lightning.callbacks import (
     ModelCheckpoint,
     LearningRateMonitor,
-    StochasticWeightAveraging,
 )
-from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning import Trainer, seed_everything
 import torch
 import argparse
@@ -23,15 +21,15 @@ JBT_SEED = int(os.environ.get("JBT_SEED", 0))
 seed_everything(JBT_SEED, workers=True)
 
 # set for flash attention    
-torch.backends.cuda.enable_flash_sdp(False)
+torch.backends.cuda.enable_flash_sdp(True)
 torch.backends.cuda.enable_mem_efficient_sdp(True)
-torch.backends.cuda.enable_math_sdp(True)
+torch.backends.cuda.enable_math_sdp(False)
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--gpu", type=int, default=2)
-    parser.add_argument("--flash_attention", default=True,
+    parser.add_argument("--gpu", type=int, default=0)
+    parser.add_argument("--force_flash_attention", default=False,
         action=argparse.BooleanOptionalAction)
     parser.add_argument(
         "--compile",
@@ -43,24 +41,25 @@ def main():
         help="Which model parts to compile, among frontend, transformer_encoder"
     )
     parser.add_argument("--n_layers", type=int, default=6)
-    parser.add_argument("--n_hidden", type=int, default=512)
+    parser.add_argument("--total_dim", type=int, default=512)
     parser.add_argument(
         "--dropout",
         type=float,
-        default=0.2,
+        default=0.1,
         help="dropout rate to apply throughout the model",
     )
-    parser.add_argument("--lr", type=float, default=8e-4)
-    parser.add_argument("--weight_decay", type=float, default=0.05)
+    parser.add_argument("--lr", type=float, default=0.0008)
+    parser.add_argument("--weight_decay", type=float, default=0.01)
     parser.add_argument(
         "--logger", type=str, choices=["wandb", "none"], default="none"
     )
-    parser.add_argument("--num_workers", type=int, default=1)
+    parser.add_argument("--num_workers", type=int, default=20)
     parser.add_argument("--n_heads", type=int, default=16)
     parser.add_argument("--fps", type=int, default=50, help="The spectrograms fps.")
     parser.add_argument(
         "--loss",
         type=str,
+        # default="shift_tolerant_weighted_bce",
         default="shift_tolerant_weighted_bce",
         choices=["shift_tolerant_weighted_bce", "weighted_bce", "bce"],
         help="The loss to use",
@@ -81,9 +80,9 @@ def main():
         help="maximum seq length for training in frames",
     )
     parser.add_argument(
-        "--use_dbn",
-        type=bool,
+        "--dbn",
         default=False,
+        action=argparse.BooleanOptionalAction,
         help="use madmom postprocessing DBN",
     )
     parser.add_argument(
@@ -93,7 +92,7 @@ def main():
         default=5,
         help="Skip the first given seconds per piece in evaluating (default: %(default)s)",
     )
-    parser.add_argument("--accumulate_grad_batches", type=int, default=1)
+    parser.add_argument("--accumulate_grad_batches", type=int, default=8)
     parser.add_argument(
         "--val_frequency",
         metavar="N",
@@ -125,7 +124,7 @@ def main():
     parser.add_argument(
         "--lenght_based_oversampling_factor",
         type=float,
-        default=0,
+        default=0.65,
         help="The factor to oversample the long pieces in the dataset. Set to 0 to only take one excerpt for each piece.",
     )
     parser.add_argument(
@@ -171,6 +170,7 @@ def main():
         test_dataset="gtzan",
         test_mode=args.test_mode,
         lenght_based_oversampling_factor=args.lenght_based_oversampling_factor,
+        augmentations=augmentations,
         train_datasets=(
             args.train_datasets.split(",") if args.train_datasets != "None" else None
         ),
@@ -186,7 +186,7 @@ def main():
         widen_target_mask=3
     )
     print("Using positive weights: ", pos_weights)
-    pl_model = PLBeatThis()
+    pl_model = PLBeatThis(spect_dim=128, fps=50, total_dim=args.total_dim, ff_mult=4, n_layers=args.n_layers, stem_dim=32, dropout=args.dropout, lr=args.lr, weight_decay=args.weight_decay, pos_weights=pos_weights, head_dim=32, loss_type=args.loss, warmup_steps=args.warmup_steps, max_epochs=args.max_epochs, use_dbn=args.dbn, eval_trim_beats=args.eval_trim_beats, predict_full_pieces=False)
     for part in args.compile:
         if hasattr(pl_model.model, part):
             setattr(pl_model.model, part, torch.compile(getattr(pl_model.model, part)))
@@ -194,7 +194,7 @@ def main():
         else:
             print("The model is missing the part", part, "to compile")
 
-    name = f"BTr-{args.loss}-lr{args.lr}-n{args.n_layers}-h{args.n_hidden}-d{args.dropout}-bs{args.batch_size}-aug{args.time_augmentation}{args.pitch_augmentation}{args.mask_augmentation}"
+    name = f"BTr-{args.loss}-lr{args.lr}-n{args.n_layers}-h{args.total_dim}-d{args.dropout}-bs{args.batch_size}-aug{args.time_augmentation}{args.pitch_augmentation}{args.mask_augmentation}"
 
     if args.logger == "wandb":
         # TODO: implement wandb logger
