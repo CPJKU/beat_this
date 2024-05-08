@@ -82,6 +82,7 @@ class SpectCreation():
         df = pd.DataFrame.from_dict(metadata).sort_values(by="spect_folder")
         df.to_csv(self.spectrograms_dir /
                   'spectrograms_metadata.csv', index=False)
+        print(f"Created {len(df)} spectrograms in {self.spectrograms_dir}")
 
     def create_spect_piece(self, preprocessed_audio_folder, beat_path, dataset_name):
         metadata = []
@@ -172,6 +173,7 @@ class AudioPreprocessing(object):
         # merge all metadata in a pandas dataframe
         df = pd.DataFrame.from_dict(sorted([m for m in metadata if m is not None],
                                            key=lambda x: x['processed_path']))
+        print("Processed", len(df), "audio files")
         return df
 
     def process_audio_file(self, dataset_name, audio_path):
