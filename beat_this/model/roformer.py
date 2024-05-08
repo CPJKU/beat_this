@@ -124,10 +124,10 @@ class Transformer(Module):
         *,
         dim,
         depth,
-        dim_head = 64,
-        heads = 8,
-        attn_dropout = 0.,
-        ff_dropout = 0.,
+        dim_head = 32,
+        heads = 16,
+        attn_dropout = 0.1,
+        ff_dropout = 0.1,
         ff_mult = 4,
         norm_output = True,
         rotary_embed = None,
@@ -148,19 +148,12 @@ class Transformer(Module):
         self.return_all_layers = return_all_layers
 
     def forward(self, x):
-        if self.return_all_layers:
-            attn_outs = []
         for attn, ff in self.layers:
             attn_x = attn(x)
-            if self.return_all_layers:
-                attn_outs.append(attn_x)
             x = attn_x + x
             x = ff(x) + x
         x = self.norm(x)
-        if self.return_all_layers:
-            return x, attn_outs
-        else:
-            return x
+        return x
 
 
 def once(fn):
