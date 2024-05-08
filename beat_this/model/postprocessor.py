@@ -5,16 +5,25 @@ import torch.nn.functional as F
 try:
     from madmom.features.downbeats import DBNDownBeatTrackingProcessor
 except:
-    madmom = None
+    DBNDownBeatTrackingProcessor = None
 from concurrent.futures import ThreadPoolExecutor
 
 class Postprocessor:
+    """ Postprocessor for the beat and downbeat predictions of the model.
+    The postprocessor takes the (framewise) model predictions and the padding mask, 
+    and returns the postprocessed beat and downbeat as list of times in seconds.
+    Two types of postprocessing are implemented:
+        - minimal: a simple postprocessing that takes the maximum of the framewise predictions,
+        and removes adjacent peaks.
+        - dbn: a postprocessing based on the Dynamic Bayesian Network proposed by Böck et al.
+    Args:
+        type (str): the type of postprocessing to apply. Either "minimal" or "dbn".
+        fps (int): the frames per second of the model framewise predictions.
+    """
     def __init__(self, type: str = "minimal", fps: int = 50):
         assert type in ["minimal", "dbn"]
         self.type = type
         self.fps = fps
-        if type == "dbn" and madmom is None:
-            raise ImportError("DBN postprocessing requires madmom, which is not installed")
         if type == "dbn":
             self.dbn = DBNDownBeatTrackingProcessor(beats_per_bar=[3, 4], min_bpm=55.0, max_bpm=215.0, fps=self.fps, transition_lambda=100, )
     
@@ -74,16 +83,17 @@ class Postprocessor:
         beat_prob = beat_prob * (1-epsilon) + epsilon/2
         downbeat_prob = downbeat_prob * (1-epsilon) + epsilon/2
         with ThreadPoolExecutor() as executor:
-            postp_beat, postp_downbeat = zip(*executor.map(self._postp_dbn_item, beat_prob, downbeat_prob, padding_mask, epsilon))
+            postp_beat, postp_downbeat = zip(*executor.map(self._postp_dbn_item, beat_prob, downbeat_prob, padding_mask))
         return postp_beat, postp_downbeat
 
-    def _postp_dbn_item(self, padded_beat_prob, padded_downbeat_prob, mask, epsilon):
+    def _postp_dbn_item(self, padded_beat_prob, padded_downbeat_prob, mask):
         """ Function to compute the operations that must be computed piece by piece, and cannot be done in batch."""
         # unpad the predictions by truncating the padding positions
         beat_prob = padded_beat_prob[mask]
         downbeat_prob = padded_downbeat_prob[mask]
         # build an artificial multiclass prediction, as suggested by Böck et al.
         # again we limit the lower bound to avoid problems with the DBN
+        epsilon = 1e-5 
         combined_act = np.vstack((np.maximum(beat_prob.cpu().numpy() - downbeat_prob.cpu().numpy(), epsilon/2), downbeat_prob.cpu().numpy())).T
         # run the DBN
         dbn_out = self.dbn(combined_act)
