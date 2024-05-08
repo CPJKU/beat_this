@@ -34,6 +34,16 @@ from einops import rearrange
 #             wide_preds, targets, weight=look_at,
 #             pos_weight=self.pos_weight, reduction='none').view(targets.size(0), -1).mean(1)
 
+class MaskedBCELoss(torch.nn.Module):
+    def __init__(self, pos_weight: int=1):
+        super().__init__()
+        self.register_buffer("pos_weight", torch.tensor(pos_weight, dtype=torch.get_default_dtype()), persistent=False)
+
+    def forward(self, preds, targets, mask):
+        return F.binary_cross_entropy_with_logits(
+            preds, targets, weight=mask, pos_weight=self.pos_weight, reduction='none').mean()
+
+
 class ShiftTolerantBCELoss(torch.nn.Module):
     """
     BCE loss applied separately to positive and negative targets with
@@ -50,7 +60,7 @@ class ShiftTolerantBCELoss(torch.nn.Module):
         super().__init__()
         self.spread_preds = spread_preds
         self.spread_targets = 2 * spread_preds # targets are always spreaded twice as much
-        self.pos_weight = self.register_buffer('pos_weight', torch.Tensor([pos_weight]))
+        self.register_buffer("pos_weight", torch.tensor(pos_weight, dtype=torch.get_default_dtype()), persistent=False)
 
     def spread(self, x, amount):
         if amount:
@@ -82,5 +92,5 @@ class ShiftTolerantBCELoss(torch.nn.Module):
         targets = self.spread(targets, self.spread_targets)
         cropped_targets = self.crop(targets, output_length)
         loss_negative = F.binary_cross_entropy_with_logits(cropped_preds, cropped_targets, weight=(1 - cropped_targets)*cropped_mask, reduction='none')
-        # average piecewise and return
+        # sum and average
         return (loss_positive + loss_negative).mean()
