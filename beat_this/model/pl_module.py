@@ -121,10 +121,12 @@ class PLBeatThis(LightningModule):
         return batch_metric, piecewise
 
     def log_losses(self, losses, batch_size, step="train"):
-        # log for separate targets and total loss
-        for target in "beat", "downbeat", "total":
-            self.log(f"{step}_loss_{target}", losses[target].item(), prog_bar=target=="total", on_step=False, on_epoch=True, batch_size=batch_size, sync_dist=True)
-    
+        # log for separate targets
+        for target in "beat", "downbeat":
+            self.log(f"{step}_loss_{target}", losses[target].item(), prog_bar=False, on_step=False, on_epoch=True, batch_size=batch_size, sync_dist=True)
+        # log total loss
+        self.log(f"{step}_loss", losses["total"].item(), prog_bar=True, on_step=False, on_epoch=True, batch_size=batch_size, sync_dist=True)
+
     def log_metrics(self, metrics, batch_size, step="val"):
         for key, value in metrics.items():
             self.log(f"{step}_{key}", value, prog_bar=key.startswith("F-measure"), on_step=False, on_epoch=True, batch_size=batch_size, sync_dist=True)
