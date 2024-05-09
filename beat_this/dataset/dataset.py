@@ -10,7 +10,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 import concurrent.futures
 from beat_this.utils import PAD_TOKEN, index_to_framewise
-from beat_this.dataset.augment import precomputed_augmentation_filenames, select_augmentation
+from beat_this.dataset.augment import precomputed_augmentation_filenames, augment_pitchtime, augment_mask
 from beat_this.utils import load_spect
 
 DATASET_INFO = {
@@ -99,15 +99,14 @@ class BeatTrackingDataset(Dataset):
                 print(f"Skipping {df_row['beat_path']} because it has {beat_annotation.ndim} columns but downbeat is supposed to be there.")
                 return
 
-        # create a loss mask depending on the annotations that are supposed to be there
-        # TODO: change this with a downbeat mask
-        loss_mask = [True, DATASET_INFO[df_row["dataset"]]["downbeat"]]
+        # create a downbeat mask to handle the case where the downbeat is not annotated
+        downbeat_mask = DATASET_INFO[df_row["dataset"]]["downbeat"]
         # select all values in columns that start with spect_len, e.g. spect_len_ts-20
         spect_lengths = {int(key.replace("spect_len_ts","")): int(value) for key, value in df_row.items() if key.startswith("spect_len")}
         return {'spect_folder': str(spect_folder),
                 'beat_time': beat_time,
                 'beat_value': beat_value,
-                'loss_mask': loss_mask,
+                'downbeat_mask': downbeat_mask,
                 'dataset': df_row['dataset'],
                 'spect_lengths': spect_lengths,
                 }
@@ -129,7 +128,7 @@ class BeatTrackingDataset(Dataset):
             item = self.items[index]
 
             # select a pitch shift and time stretch
-            item = select_augmentation(item, self.augmentations)
+            item = augment_pitchtime(item, self.augmentations)
             # define the excerpt to use
             original_length = item["spect_length"]
             longer = original_length - self.train_length
@@ -147,10 +146,8 @@ class BeatTrackingDataset(Dataset):
             # load spectrogram
             spect = load_spect(item["spect_path"], start=start_frame, stop=end_frame)
 
-            # augment the spectrogram with mask augmentation if needed
-            if "mask" in self.augmentations.keys():
-                # TODO: to be implemented
-                pass
+            # augment the spectrogram with mask augmentation
+            spect = augment_mask(spect, self.augmentations, self.fps)
 
             # prepare annotations
             framewise_truth_beat, framewise_truth_downbeat, truth_orig_beat, truth_orig_downbeat = prepare_annotations(item, start_frame, end_frame, self.fps)
@@ -161,7 +158,7 @@ class BeatTrackingDataset(Dataset):
                     "start_frame": start_frame,
                     "truth_beat": framewise_truth_beat,
                     "truth_downbeat": framewise_truth_downbeat,
-                    "loss_mask": torch.as_tensor(item["loss_mask"]),
+                    "downbeat_mask": torch.as_tensor(item["downbeat_mask"]),
                     "padding_mask": np.ones(self.train_length, dtype=bool),
                     "dataset": item["dataset"],
                     "truth_orig_beat": truth_orig_beat,
@@ -210,7 +207,7 @@ class BeatDataModule(pl.LightningDataModule):
         self.spect_fps = spect_fps
         self.data_dir = data_dir
         # set up the paths
-        annotation_dir = data_dir / 'annotations'
+        annotation_dir = data_dir / 'beat_annotations'
         spect_dir = data_dir / 'preprocessed' / 'spectrograms'
         # load dataframe with all pieces information
         metadata_file = spect_dir / 'spectrograms_metadata.csv'
@@ -276,7 +273,7 @@ class BeatDataModule(pl.LightningDataModule):
             df_subset = self.metadata_df[self.metadata_df["dataset"] == dataset].copy()
             if df_subset.shape[0] != split_df.shape[0]:
                 raise ValueError(f"Dataset {dataset} has {df_subset.shape[0]} pieces, but split file has {split_df.shape[0]} pieces")
-            df_subset["piece"] = df_subset["processed_path"].apply(lambda p: Path(p).name)
+            df_subset["piece"] = df_subset["spect_folder"].apply(lambda p: Path(p).name)
             if set(df_subset.piece) != set(split_df.piece):
                 raise ValueError(f"Piece names and split file do not match for dataset {dataset}")
             split_data_df = df_subset.reset_index().merge(split_df, on='piece').set_index('index')
@@ -377,9 +374,9 @@ class BeatDataModule(pl.LightningDataModule):
         # find the positive weight for the loss as a ratio between (down)beat and non-(down)beat annotation
         dataset = self.train_dataset
         all_frames = sum(i["spect_lengths"][0] for i in dataset.items)
-        all_frames_db = sum(item["spect_lengths"][0] for item in dataset.items if item["loss_mask"][1] ) # consider only datasets which have downbeat information
+        all_frames_db = sum(item["spect_lengths"][0] for item in dataset.items if item["downbeat_mask"] ) # consider only datasets which have downbeat information
         beat_frames = sum(len(i["beat_time"]) for i in dataset.items)
-        downbeat_frames = sum(1 for item in dataset.items if item["loss_mask"][1] for b in item["beat_value"] if b==1)
+        downbeat_frames = sum(1 for item in dataset.items if item["downbeat_mask"] for b in item["beat_value"] if b==1)
 
         return {"beat" : int(np.round((all_frames - beat_frames * (widen_target_mask*2 +1)) / beat_frames)),
                 "downbeat" : int(np.round((all_frames_db - downbeat_frames * (widen_target_mask*2 +1)) / downbeat_frames)),

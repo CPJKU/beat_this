@@ -73,7 +73,7 @@ class PLBeatThis(LightningModule):
     def _compute_loss(self, batch, model_prediction):
         losses = {}
         # set up the mask: a combination of the padding mask and the annotation mask (if pieces have downbeat annotations)
-        mask = batch["padding_mask"] * batch["loss_mask"][:,1][:,None]
+        mask = batch["padding_mask"] * batch["downbeat_mask"][:,None]
         losses["beat"] = self.beat_loss(model_prediction["beat"], batch["truth_beat"].float(), mask)
         losses["downbeat"] = self.downbeat_loss(model_prediction["downbeat"], batch["truth_downbeat"].float(), mask)
         # sum the losses

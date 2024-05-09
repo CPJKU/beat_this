@@ -20,11 +20,6 @@ torch.multiprocessing.set_sharing_strategy("file_system")
 JBT_SEED = int(os.environ.get("JBT_SEED", 0))
 seed_everything(JBT_SEED, workers=True)
 
-# set for flash attention    
-torch.backends.cuda.enable_flash_sdp(True)
-torch.backends.cuda.enable_mem_efficient_sdp(True)
-torch.backends.cuda.enable_math_sdp(False)
-
 
 def main():
     parser = argparse.ArgumentParser()
@@ -151,6 +146,13 @@ def main():
     print("Starting a new run with the following parameters:")
     print(args)
 
+    if args.force_flash_attention:
+        print("Forcing the use of the flash attention")
+        # set for flash attention    
+        torch.backends.cuda.enable_flash_sdp(True)
+        torch.backends.cuda.enable_mem_efficient_sdp(False)
+        torch.backends.cuda.enable_math_sdp(False)
+
     data_dir = Path(__file__).parent.parent.relative_to(Path.cwd()) / "data"
     augmentations = {}
     if args.time_augmentation:
@@ -158,8 +160,14 @@ def main():
     if args.pitch_augmentation:
         augmentations["pitch"] = {"min": -5, "max": 6}
     if args.mask_augmentation:
-        pass
-        # TODO: add mask augmentation
+        # kind, min_count, max_count, min_len, max_len, min_parts, max_parts
+        augmentations["mask"] = {"kind":"permute",
+                                 "min_count":1,
+                                 "max_count":6,
+                                 "min_len":0.1,
+                                 "max_len": 2,
+                                 "min_parts": 5,
+                                 "max_parts": 9}
         
     datamodule = BeatDataModule(
         data_dir,
