@@ -54,7 +54,6 @@ def main():
     parser.add_argument(
         "--loss",
         type=str,
-        # default="shift_tolerant_weighted_bce",
         default="shift_tolerant_weighted_bce",
         choices=["shift_tolerant_weighted_bce", "weighted_bce", "bce"],
         help="The loss to use",
@@ -146,6 +145,14 @@ def main():
     print("Starting a new run with the following parameters:")
     print(args)
 
+    if args.logger == "wandb":
+        name = f"BTr-{args.loss}-lr{args.lr}-n{args.n_layers}-h{args.total_dim}-d{args.dropout}-bs{args.batch_size}-aug{args.time_augmentation}{args.pitch_augmentation}{args.mask_augmentation}"
+        logger = WandbLogger(project="JBT", entity="vocsep", name=name)
+        pass
+    else:
+        logger= None
+            
+
     if args.force_flash_attention:
         print("Forcing the use of the flash attention")
         # set for flash attention    
@@ -201,14 +208,6 @@ def main():
             print("Will compile model", part)
         else:
             print("The model is missing the part", part, "to compile")
-
-    name = f"BTr-{args.loss}-lr{args.lr}-n{args.n_layers}-h{args.total_dim}-d{args.dropout}-bs{args.batch_size}-aug{args.time_augmentation}{args.pitch_augmentation}{args.mask_augmentation}"
-
-    if args.logger == "wandb":
-        # TODO: implement wandb logger
-        pass
-    else:
-        logger= None
 
     callbacks = [LearningRateMonitor(logging_interval="step")]
     # save only the last model
