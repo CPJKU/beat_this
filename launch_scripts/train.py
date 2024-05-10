@@ -24,7 +24,7 @@ seed_everything(JBT_SEED, workers=True)
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--gpu", type=int, default=0)
-    parser.add_argument("--force_flash_attention", default=False,
+    parser.add_argument("--force-flash-attention", default=False,
         action=argparse.BooleanOptionalAction)
     parser.add_argument(
         "--compile",
@@ -35,21 +35,21 @@ def main():
         # default=["frontend","transformer_blocks"],
         help="Which model parts to compile, among frontend, transformer_encoder"
     )
-    parser.add_argument("--n_layers", type=int, default=6)
-    parser.add_argument("--total_dim", type=int, default=512)
+    parser.add_argument("--n-layers", type=int, default=6)
+    parser.add_argument("--total-dim", type=int, default=512)
     parser.add_argument(
         "--dropout",
         type=float,
-        default=0.1,
+        default=0.2,
         help="dropout rate to apply throughout the model",
     )
     parser.add_argument("--lr", type=float, default=0.0008)
-    parser.add_argument("--weight_decay", type=float, default=0.01)
+    parser.add_argument("--weight-decay", type=float, default=0.01)
     parser.add_argument(
         "--logger", type=str, choices=["wandb", "none"], default="none"
     )
-    parser.add_argument("--num_workers", type=int, default=20)
-    parser.add_argument("--n_heads", type=int, default=16)
+    parser.add_argument("--num-workers", type=int, default=20)
+    parser.add_argument("--n-heads", type=int, default=16)
     parser.add_argument("--fps", type=int, default=50, help="The spectrograms fps.")
     parser.add_argument(
         "--loss",
@@ -59,16 +59,16 @@ def main():
         help="The loss to use",
     )
     parser.add_argument(
-        "--warmup_steps", type=int, default=1000, help="warmup steps for optimizer"
+        "--warmup-steps", type=int, default=1000, help="warmup steps for optimizer"
     )
     parser.add_argument(
-        "--max_epochs", type=int, default=100, help="max epochs for training"
+        "--max-epochs", type=int, default=100, help="max epochs for training"
     )
     parser.add_argument(
-        "--batch_size", type=int, default=8, help="batch size for training"
+        "--batch-size", type=int, default=8, help="batch size for training"
     )
     parser.add_argument(
-        "--train_length",
+        "--train-length",
         type=int,
         default=1500,
         help="maximum seq length for training in frames",
@@ -80,55 +80,55 @@ def main():
         help="use madmom postprocessing DBN",
     )
     parser.add_argument(
-        "--eval_trim_beats",
+        "--eval-trim-beats",
         metavar="SECONDS",
         type=float,
         default=5,
         help="Skip the first given seconds per piece in evaluating (default: %(default)s)",
     )
-    parser.add_argument("--accumulate_grad_batches", type=int, default=8)
+    parser.add_argument("--accumulate-grad-batches", type=int, default=8)
     parser.add_argument(
-        "--val_frequency",
+        "--val-frequency",
         metavar="N",
         type=int,
         default=5,
         help="validate every N epochs (default: %(default)s)",
     )
     parser.add_argument(
-        "--time_augmentation",
+        "--time-augmentation",
         default=True,
         action=argparse.BooleanOptionalAction,
         help="Use precomputed time aumentation",
     )
     parser.add_argument(
-        "--pitch_augmentation",
+        "--pitch-augmentation",
         default=True,
         action=argparse.BooleanOptionalAction,
         help="Use precomputed pitch aumentation",
     )
     parser.add_argument(
-        "--mask_augmentation",
+        "--mask-augmentation",
         default=True,
         action=argparse.BooleanOptionalAction,
         help="Use online mask aumentation",
     )
     parser.add_argument(
-        "--test_mode", action="store_true", help="test mode to fast check the system"
+        "--test-mode", action="store_true", help="test mode to fast check the system"
     )
     parser.add_argument(
-        "--lenght_based_oversampling_factor",
+        "--lenght-based-oversampling-factor",
         type=float,
         default=0.65,
         help="The factor to oversample the long pieces in the dataset. Set to 0 to only take one excerpt for each piece.",
     )
     parser.add_argument(
-        "--train_datasets",
+        "--train-datasets",
         type=str,
         default="None",
         help="A comma separated list of datasets to train on. None for all datasets.",
     )
     parser.add_argument(
-        "--val_datasets",
+        "--val-datasets",
         type=str,
         default="None",
         help="A comma separated list of datasets to validate on. None for all datasets, and empty string for no validation.",
@@ -148,7 +148,6 @@ def main():
     if args.logger == "wandb":
         name = f"BTr-{args.loss}-lr{args.lr}-n{args.n_layers}-h{args.total_dim}-d{args.dropout}-bs{args.batch_size}-aug{args.time_augmentation}{args.pitch_augmentation}{args.mask_augmentation}"
         logger = WandbLogger(project="JBT", entity="vocsep", name=name)
-        pass
     else:
         logger= None
             
