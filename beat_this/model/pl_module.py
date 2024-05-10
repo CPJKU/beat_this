@@ -155,11 +155,15 @@ class PLBeatThis(LightningModule):
     def test_step(self, batch, batch_idx):
         # run the model
         model_prediction = self.model(batch["spect"])
-        # compute loss and slow metrics
-        shared_out, metrics = self._compute_metrics(batch, model_prediction, step="test")
+        # compute loss
+        losses = self._compute_loss(batch, model_prediction)
+        # postprocess the predictions
+        model_prediction = self.postprocessor(model_prediction, batch["padding_mask"])
+        # compute the metrics
+        metrics, piecewise = self._compute_metrics(batch, model_prediction, step="test")
         # log
-        self.log_losses(shared_out, len(batch["spect"]), "test")
-        self.log_slow_metrics(metrics, batch["spect"].shape[0], "test")
+        self.log_losses(losses, len(batch["spect"]), "test")
+        self.log_metrics(metrics, batch["spect"].shape[0], "test")
 
     # def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0, overlap: int = 0, overlaps: str = 'keep_first') -> Any:
     #     """
