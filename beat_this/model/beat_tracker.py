@@ -88,7 +88,6 @@ class BeatThis(nn.Module):
                                                        ff_dropout=dropout, rotary_embed=rotary_embed, ff_mult=ff_mult, dim_head=head_dim, norm_output=True)
 
         # create the output heads
-        self.output_dropout = nn.Dropout(dropout)
         self.task_heads = SumHead(total_dim)
 
         # init all weights
@@ -111,11 +110,9 @@ class BeatThis(nn.Module):
                     module.weight[module.padding_idx].fill_(0)
 
     def forward(self, x):
-        x = self.input_dropout(x)
         x = self.frontend(x)
         x = self.input_dropout(x)
         x = self.transformer_blocks(x)
-        x = self.output_dropout(x)
         x = self.task_heads(x)
         return x
 
@@ -154,15 +151,12 @@ class PartialRoformer(nn.Module):
 class SumHead(nn.Module):
     def __init__(self, input_dim):
         super().__init__()
-        self.beat_lin = nn.Linear(input_dim, 1)
-        self.downbeat_lin = nn.Linear(input_dim, 1)
+        self.beat_downbeat_lin = nn.Linear(input_dim, 2)
 
     def forward(self, x):
-        beat = self.beat_lin(x)
-        downbeat = self.downbeat_lin(x)
-        # remove last dimension
-        beat = rearrange(beat, "b t 1 -> b t")
-        downbeat = rearrange(downbeat, "b t 1 -> b t")
+        beat_downbeat = self.beat_downbeat_lin(x)
+        # separate beat from downbeat
+        beat, downbeat = rearrange(beat_downbeat, "b t c -> c b t", c=2)
         # aggregate beats and downbeats prediction
         # autocast is necessary to avoid numerical issues causing NaNs
         with torch.autocast(beat.device.type, enabled=False):
