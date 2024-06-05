@@ -3,36 +3,32 @@ import torch.nn.functional as F
 from einops import rearrange
 
 
-# class ShiftTolerantBCELoss(torch.nn.Module):
-#     def __init__(self, pos_weight: int=1, tolerance:int=3):
-#         super().__init__(pos_weight)
-#         if tolerance < 1:
-#             raise ValueError("tolerance must be greater than 0. Use normal BCELoss for tolerance 0")
-#         self.tolerance = tolerance
-#         self.pos_weight = pos_weight
+class FastShiftTolerantBCELoss(torch.nn.Module):
+    def __init__(self, pos_weight: int=1, tolerance:int=3):
+        super().__init__()
+        if tolerance < 1:
+            raise ValueError("tolerance must be greater than 0. Use normal BCELoss for tolerance 0")
+        self.tolerance = tolerance
+        self.register_buffer("pos_weight", torch.tensor([pos_weight], dtype=torch.int32), persistent=False)
 
-#     def spread(self, x, factor=1):
-#         return F.max_pool1d(x, 1 + 2 * factor * self.tolerance, 1)
+    def spread(self, x, factor=1):
+        return F.max_pool1d(x, 1 + 2 * factor * self.tolerance, 1)
 
-#     def crop(self, x, factor=1):
-#         return x[..., factor * self.tolerance:-factor * self.tolerance or None]
+    def crop(self, x, factor=1):
+        return x[..., factor * self.tolerance:-factor * self.tolerance or None]
 
-#     def forward(self, preds, targets, mask=None):
-#         # crop preds and targets
-#         # TODO: do we want this cropping?
-#         targets= self.crop(targets, factor=2)
-#         wide_preds = self.widen(preds)
-#         preds = self.crop(wide_preds, factor=2)
-#         # maxpoll preds
-        
-#         # ignore around the positive targets
-#         look_at = targets + (1 - self.spread(targets, factor=2))
-#         if mask is not None:
-#             look_at = look_at * self.crop(mask, factor=2)
-#         # compute loss
-#         return F.binary_cross_entropy_with_logits(
-#             wide_preds, targets, weight=look_at,
-#             pos_weight=self.pos_weight, reduction='none').view(targets.size(0), -1).mean(1)
+    def forward(self, preds, targets, mask=None):
+        # crop preds and targets
+        cropped_targets= self.crop(targets, factor=2)
+        wide_preds = self.crop(self.spread(preds))
+        # ignore around the positive targets
+        look_at = cropped_targets + (1 - self.spread(targets, factor=2))
+        if mask is not None: # consider padding and no-downbeat mask
+            look_at = look_at * self.crop(mask, factor=2)
+        # compute loss
+        return F.binary_cross_entropy_with_logits(
+            wide_preds, cropped_targets, weight=look_at,
+            pos_weight=self.pos_weight, reduction='none').view(targets.size(0), -1).mean(1).mean()
 
 class MaskedBCELoss(torch.nn.Module):
     def __init__(self, pos_weight: int=1):

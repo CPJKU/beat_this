@@ -68,7 +68,7 @@ def main():
         "--loss",
         type=str,
         default="shift_tolerant_weighted_bce",
-        choices=["shift_tolerant_weighted_bce", "weighted_bce", "bce"],
+        choices=["shift_tolerant_weighted_bce", "fast_shift_tolerant_weighted_bce", "weighted_bce", "bce"],
         help="The loss to use",
     )
     parser.add_argument(
@@ -159,7 +159,7 @@ def main():
     print(args)
 
     if args.logger == "wandb":
-        name = f"BTr-{args.loss}-lr{args.lr}-n{args.n_layers}-h{args.total_dim}-d{args.input_dropout},{args.frontend_dropout},{args.transformer_dropout}-bs{args.batch_size}-aug{args.time_augmentation}{args.pitch_augmentation}{args.mask_augmentation}"
+        name = f"BTr-{args.loss}-lr{args.lr}-n{args.n_layers}-h{args.total_dim}-d{args.input_dropout},{args.frontend_dropout},{args.transformer_dropout}-bs{args.batch_size}x{args.accumulate_grad_batches}-aug{args.time_augmentation}{args.pitch_augmentation}{args.mask_augmentation}"
         logger = WandbLogger(project="JBT", entity="vocsep", name=name)
     else:
         logger = None
