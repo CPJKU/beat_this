@@ -37,11 +37,11 @@ from einops import rearrange
 class MaskedBCELoss(torch.nn.Module):
     def __init__(self, pos_weight: int=1):
         super().__init__()
-        self.register_buffer("pos_weight", torch.tensor(pos_weight, dtype=torch.get_default_dtype()), persistent=False)
+        self.register_buffer("pos_weight", torch.tensor([pos_weight], dtype=torch.int32), persistent=False)
 
     def forward(self, preds, targets, mask):
         return F.binary_cross_entropy_with_logits(
-            preds, targets, weight=mask, pos_weight=self.pos_weight, reduction='none').mean()
+            preds, targets, weight=mask, pos_weight=self.pos_weight)
 
 
 class ShiftTolerantBCELoss(torch.nn.Module):
@@ -60,7 +60,7 @@ class ShiftTolerantBCELoss(torch.nn.Module):
         super().__init__()
         self.spread_preds = spread_preds
         self.spread_targets = 2 * spread_preds # targets are always spreaded twice as much
-        self.register_buffer("pos_weight", torch.tensor(pos_weight, dtype=torch.get_default_dtype()), persistent=False)
+        self.register_buffer("pos_weight", torch.tensor([pos_weight], dtype=torch.int32), persistent=False)
 
     def spread(self, x, amount):
         if amount:

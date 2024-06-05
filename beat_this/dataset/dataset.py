@@ -199,7 +199,7 @@ class BeatDataModule(pl.LightningDataModule):
     def __init__(self, data_dir, batch_size=8,
                  train_length=1500, num_workers=20, augmentations={"pitch": {"min": -5, "max": 6}, "time": {"min": -20, "max": 20, "stride": 4}},
                  test_dataset="gtzan", train_datasets=None, val_datasets=None, spect_fps=50,
-                 lenght_based_oversampling_factor=0,
+                 length_based_oversampling_factor=0,
                  test_mode=False, fold=None):
         super().__init__()
         self.save_hyperparameters()
@@ -239,7 +239,7 @@ class BeatDataModule(pl.LightningDataModule):
         self.num_workers = num_workers
         self.augmentations = augmentations
         self.test_mode = test_mode
-        self.lenght_based_oversampling_factor = lenght_based_oversampling_factor
+        self.length_based_oversampling_factor = length_based_oversampling_factor
         # check if augmentations.keys() contains only 'mask', 'pitch' and 'time'
         if not set(augmentations.keys()).issubset({'mask', 'pitch', 'time'}):
             raise ValueError(f"Unsupported augmentations: {augmentations.keys()}")
@@ -299,10 +299,10 @@ class BeatDataModule(pl.LightningDataModule):
                 train_idx = np.concatenate([train_idx, val_idx])
             else:
                 val_idx = val_idx[self.metadata_df["dataset"][val_idx].isin(self.val_datasets)]
-        if self.lenght_based_oversampling_factor:
+        if self.length_based_oversampling_factor:
             # oversample the training set according to the audio_length information, so that long pieces are more likely to be sampled
             old_len = len(train_idx)
-            piece_oversampling_factor = np.round(self.lenght_based_oversampling_factor * self.metadata_df["spect_len_ts0"][train_idx].values / (self.train_length)).astype(int)
+            piece_oversampling_factor = np.round(self.length_based_oversampling_factor * self.metadata_df["spect_len_ts0"][train_idx].values / (self.train_length)).astype(int)
             piece_oversampling_factor = np.clip(piece_oversampling_factor, 1, None)
             train_idx = np.repeat(train_idx, piece_oversampling_factor)
             print(f"Training set oversampled from {old_len} to {len(train_idx)} excerpts.")

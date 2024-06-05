@@ -129,7 +129,7 @@ def main():
         "--test-mode", action="store_true", help="test mode to fast check the system"
     )
     parser.add_argument(
-        "--lenght-based-oversampling-factor",
+        "--length-based-oversampling-factor",
         type=float,
         default=0.65,
         help="The factor to oversample the long pieces in the dataset. Set to 0 to only take one excerpt for each piece.",
@@ -195,7 +195,7 @@ def main():
         num_workers=args.num_workers,
         test_dataset="gtzan",
         test_mode=args.test_mode,
-        lenght_based_oversampling_factor=args.lenght_based_oversampling_factor,
+        length_based_oversampling_factor=args.length_based_oversampling_factor,
         augmentations=augmentations,
         train_datasets=(
             args.train_datasets.split(
