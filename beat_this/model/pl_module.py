@@ -29,7 +29,7 @@ class PLBeatThis(LightningModule):
         ff_mult = 4,
         n_layers=6,
         stem_dim=32,
-        dropout=0.1,
+        dropout={"input" : 0.2, "frontend": 0.1, "transformer": 0.2}, 
         lr=0.0008,
         weight_decay=0.01,
         pos_weights = {"beat": 1, "downbeat": 1},
@@ -71,14 +71,13 @@ class PLBeatThis(LightningModule):
         
 
     def _compute_loss(self, batch, model_prediction):
-        losses = {}
-        # set up the mask: a combination of the padding mask and the annotation mask (if pieces have downbeat annotations)
-        mask = batch["padding_mask"] * batch["downbeat_mask"][:,None]
-        losses["beat"] = self.beat_loss(model_prediction["beat"], batch["truth_beat"].float(), mask)
-        losses["downbeat"] = self.downbeat_loss(model_prediction["downbeat"], batch["truth_downbeat"].float(), mask)
-        # sum the losses
-        losses["total"] = sum(losses.values())
-        return losses
+        beat_mask = batch["padding_mask"]
+        beat_loss = self.beat_loss(model_prediction["beat"], batch["truth_beat"].float(), beat_mask)
+        # downbeat mask considers padding and also pieces which don't have downbeat annotations
+        downbeat_mask = beat_mask  * batch["downbeat_mask"][:,None]
+        downbeat_loss = self.downbeat_loss(model_prediction["downbeat"], batch["truth_downbeat"].float(), downbeat_mask)
+        # sum the losses and return them in a dictionary for logging
+        return {"beat": beat_loss, "downbeat" : downbeat_loss, "total" : beat_loss+downbeat_loss}
 
     def _compute_metrics(self, batch, model_prediction, step="val"):
         # compute for beat

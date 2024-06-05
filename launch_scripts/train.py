@@ -25,23 +25,35 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--gpu", type=int, default=0)
     parser.add_argument("--force-flash-attention", default=False,
-        action=argparse.BooleanOptionalAction)
+                        action=argparse.BooleanOptionalAction)
     parser.add_argument(
         "--compile",
-        action='store', 
+        action='store',
         nargs="*",
         type=str,
-        default=[],
-        # default=["frontend","transformer_blocks"],
-        help="Which model parts to compile, among frontend, transformer_encoder"
+        # default=[],
+        default=["frontend", "transformer_blocks", "task_heads"],
+        help="Which model parts to compile, among frontend, transformer_encoder, task_heads"
     )
     parser.add_argument("--n-layers", type=int, default=6)
     parser.add_argument("--total-dim", type=int, default=512)
     parser.add_argument(
-        "--dropout",
+        "--input_dropout",
         type=float,
         default=0.2,
         help="dropout rate to apply throughout the model",
+    )
+    parser.add_argument(
+        "--frontend_dropout",
+        type=float,
+        default=0.1,
+        help="dropout rate to apply in the frontend",
+    )
+    parser.add_argument(
+        "--transformer_dropout",
+        type=float,
+        default=0.2,
+        help="dropout rate to apply in the main transformer blocks",
     )
     parser.add_argument("--lr", type=float, default=0.0008)
     parser.add_argument("--weight-decay", type=float, default=0.01)
@@ -50,7 +62,8 @@ def main():
     )
     parser.add_argument("--num-workers", type=int, default=20)
     parser.add_argument("--n-heads", type=int, default=16)
-    parser.add_argument("--fps", type=int, default=50, help="The spectrograms fps.")
+    parser.add_argument("--fps", type=int, default=50,
+                        help="The spectrograms fps.")
     parser.add_argument(
         "--loss",
         type=str,
@@ -67,6 +80,7 @@ def main():
     parser.add_argument(
         "--batch-size", type=int, default=8, help="batch size for training"
     )
+    parser.add_argument("--accumulate-grad-batches", type=int, default=8)
     parser.add_argument(
         "--train-length",
         type=int,
@@ -86,7 +100,6 @@ def main():
         default=5,
         help="Skip the first given seconds per piece in evaluating (default: %(default)s)",
     )
-    parser.add_argument("--accumulate-grad-batches", type=int, default=8)
     parser.add_argument(
         "--val-frequency",
         metavar="N",
@@ -125,13 +138,13 @@ def main():
         "--train-datasets",
         type=str,
         default="None",
-        help="A comma separated list of datasets to train on. None for all datasets.",
+        help="The datasets to train on. None for all datasets.",
     )
     parser.add_argument(
         "--val-datasets",
         type=str,
         default="None",
-        help="A comma separated list of datasets to validate on. None for all datasets, and empty string for no validation.",
+        help="The datasets to validate on. None for all datasets, and empty string for no validation.",
     )
     parser.add_argument(
         "--fold",
@@ -146,15 +159,14 @@ def main():
     print(args)
 
     if args.logger == "wandb":
-        name = f"BTr-{args.loss}-lr{args.lr}-n{args.n_layers}-h{args.total_dim}-d{args.dropout}-bs{args.batch_size}-aug{args.time_augmentation}{args.pitch_augmentation}{args.mask_augmentation}"
+        name = f"BTr-{args.loss}-lr{args.lr}-n{args.n_layers}-h{args.total_dim}-d{args.input_dropout},{args.frontend_dropout},{args.transformer_dropout}-bs{args.batch_size}-aug{args.time_augmentation}{args.pitch_augmentation}{args.mask_augmentation}"
         logger = WandbLogger(project="JBT", entity="vocsep", name=name)
     else:
-        logger= None
-            
+        logger = None
 
     if args.force_flash_attention:
         print("Forcing the use of the flash attention")
-        # set for flash attention    
+        # set for flash attention
         torch.backends.cuda.enable_flash_sdp(True)
         torch.backends.cuda.enable_mem_efficient_sdp(False)
         torch.backends.cuda.enable_math_sdp(False)
@@ -167,29 +179,31 @@ def main():
         augmentations["pitch"] = {"min": -5, "max": 6}
     if args.mask_augmentation:
         # kind, min_count, max_count, min_len, max_len, min_parts, max_parts
-        augmentations["mask"] = {"kind":"permute",
-                                 "min_count":1,
-                                 "max_count":6,
-                                 "min_len":0.1,
+        augmentations["mask"] = {"kind": "permute",
+                                 "min_count": 1,
+                                 "max_count": 6,
+                                 "min_len": 0.1,
                                  "max_len": 2,
                                  "min_parts": 5,
                                  "max_parts": 9}
-        
+
     datamodule = BeatDataModule(
         data_dir,
         batch_size=args.batch_size,
         train_length=args.train_length,
-        spect_fps = args.fps,
+        spect_fps=args.fps,
         num_workers=args.num_workers,
         test_dataset="gtzan",
         test_mode=args.test_mode,
         lenght_based_oversampling_factor=args.lenght_based_oversampling_factor,
         augmentations=augmentations,
         train_datasets=(
-            args.train_datasets.split(",") if args.train_datasets != "None" else None
+            args.train_datasets.split(
+                ",") if args.train_datasets != "None" else None
         ),
         val_datasets=(
-            args.val_datasets.split(",") if args.val_datasets != "None" else None
+            args.val_datasets.split(
+                ",") if args.val_datasets != "None" else None
         ),
         fold=args.fold,
     )
@@ -200,13 +214,17 @@ def main():
         widen_target_mask=3
     )
     print("Using positive weights: ", pos_weights)
-    pl_model = PLBeatThis(spect_dim=128, fps=50, total_dim=args.total_dim, ff_mult=4, n_layers=args.n_layers, stem_dim=32, dropout=args.dropout, lr=args.lr, weight_decay=args.weight_decay, pos_weights=pos_weights, head_dim=32, loss_type=args.loss, warmup_steps=args.warmup_steps, max_epochs=args.max_epochs, use_dbn=args.dbn, eval_trim_beats=args.eval_trim_beats, predict_full_pieces=False)
+    dropout = {"input" : args.input_dropout, "frontend": args.frontend_dropout,"transformer" : args.transformer_dropout}
+    pl_model = PLBeatThis(spect_dim=128, fps=50, total_dim=args.total_dim, ff_mult=4, n_layers=args.n_layers, stem_dim=32, dropout=dropout, lr=args.lr, weight_decay=args.weight_decay,
+                          pos_weights=pos_weights, head_dim=32, loss_type=args.loss, warmup_steps=args.warmup_steps, max_epochs=args.max_epochs, use_dbn=args.dbn, eval_trim_beats=args.eval_trim_beats, predict_full_pieces=False)
     for part in args.compile:
         if hasattr(pl_model.model, part):
-            setattr(pl_model.model, part, torch.compile(getattr(pl_model.model, part)))
+            setattr(pl_model.model, part, torch.compile(
+                getattr(pl_model.model, part)))
             print("Will compile model", part)
         else:
-            print("The model is missing the part", part, "to compile")
+            raise ValueError("The model is missing the part",
+                             part, "to compile")
 
     callbacks = [LearningRateMonitor(logging_interval="step")]
     # save only the last model
@@ -215,7 +233,7 @@ def main():
     trainer = Trainer(
         max_epochs=args.max_epochs,
         accelerator="auto",
-        devices=[args.gpu], 
+        devices=[args.gpu],
         num_sanity_val_steps=1,
         logger=logger,
         callbacks=callbacks,
@@ -228,7 +246,7 @@ def main():
     trainer.fit(pl_model, datamodule)
     trainer.test(
         pl_model, datamodule
-    )  
+    )
 
 
 if __name__ == "__main__":
