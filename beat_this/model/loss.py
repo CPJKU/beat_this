@@ -82,15 +82,15 @@ class ShiftTolerantBCELoss(torch.nn.Module):
         output_length = targets.size(-1) - 2 * self.spread_targets
         # compute loss for positive targets, we spread preds
         preds = self.spread(preds, self.spread_preds)
-        # we crop preds and targets to ignore problems at the edges and compute loss (with pos weights)
+        # we crop preds and targets (and mask) to ignore problems at the edges due to the maxpool operation
         cropped_preds = self.crop(preds, output_length)
         cropped_targets = self.crop(targets, output_length)
         cropped_mask = self.crop(mask, output_length)
-        loss_positive = F.binary_cross_entropy_with_logits(cropped_preds, cropped_targets, weight=cropped_targets*cropped_mask, pos_weight=self.pos_weight, reduction='none')
+        loss_positive = F.binary_cross_entropy_with_logits(cropped_preds, cropped_targets, weight=cropped_targets*cropped_mask, pos_weight=self.pos_weight)
 
         # compute loss for negative targets, we spread targets and preds (already spreaded above)
         targets = self.spread(targets, self.spread_targets)
         cropped_targets = self.crop(targets, output_length)
-        loss_negative = F.binary_cross_entropy_with_logits(cropped_preds, cropped_targets, weight=(1 - cropped_targets)*cropped_mask, reduction='none')
-        # sum and average
-        return (loss_positive + loss_negative).mean()
+        loss_negative = F.binary_cross_entropy_with_logits(cropped_preds, cropped_targets, weight=(1 - cropped_targets)*cropped_mask)
+        # sum the two losses
+        return loss_positive + loss_negative
