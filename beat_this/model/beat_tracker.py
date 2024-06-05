@@ -22,7 +22,7 @@ class BeatThis(nn.Module):
         n_layers=6,
         head_dim=32,
         stem_dim=32,
-        dropout=0.1,
+        dropout={"input": 0.2, "frontend": 0.1, "transformer": 0.2},
     ):
         super().__init__()
 
@@ -30,7 +30,7 @@ class BeatThis(nn.Module):
         n_heads = total_dim // head_dim
         rotary_embed = RotaryEmbedding(head_dim)
 
-        self.input_dropout = nn.Dropout(dropout)
+        self.input_dropout = nn.Dropout(dropout["input"])
 
         # create the frontend
         stem = nn.Sequential(
@@ -56,7 +56,7 @@ class BeatThis(nn.Module):
                             n_head=_dim // head_dim,
                             direction="F",
                             rotary_embed=rotary_embed,
-                            dropout=dropout,
+                            dropout=dropout["frontend"],
                         ),
                         tpartial=PartialRoformer(  # time directed partial transformer
                             dim=_dim,
@@ -64,7 +64,7 @@ class BeatThis(nn.Module):
                             n_head=_dim // head_dim,
                             direction="T",
                             rotary_embed=rotary_embed,
-                            dropout=dropout,
+                            dropout=dropout["frontend"],
                         ),
                         # conv block
                         conv2d=nn.Conv2d(in_channels=_dim, out_channels=_dim * 2,
@@ -84,8 +84,8 @@ class BeatThis(nn.Module):
             stem, frontend_blocks, concat, last_linear)
 
         # create the transformer blocks
-        self.transformer_blocks = roformer.Transformer(dim=total_dim, depth=n_layers, heads=n_heads, attn_dropout=dropout,
-                                                       ff_dropout=dropout, rotary_embed=rotary_embed, ff_mult=ff_mult, dim_head=head_dim, norm_output=True)
+        self.transformer_blocks = roformer.Transformer(dim=total_dim, depth=n_layers, heads=n_heads, attn_dropout=dropout["transformer"],
+                                                       ff_dropout=dropout["transformer"], rotary_embed=rotary_embed, ff_mult=ff_mult, dim_head=head_dim, norm_output=True)
 
         # create the output heads
         self.task_heads = SumHead(total_dim)
