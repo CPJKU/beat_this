@@ -91,7 +91,7 @@ class BeatTrackingDataset(Dataset):
             beat_value = beat_annotation[:, 1].astype(int)
         else:
             beat_time = beat_annotation
-            beat_value = np.ones_like(beat_time, dtype=np.int32) * PAD_TOKEN
+            beat_value = np.zeros_like(beat_time, dtype=np.int32)
 
         # stop if the annotations that are supposed to be there are not there
         if DATASET_INFO[df_row["dataset"]]["downbeat"]:
