@@ -97,7 +97,7 @@ class SpectCreation():
                 spect = self.spect_class(torch.tensor(
                     waveform, dtype=torch.float32).unsqueeze(0)).squeeze(0)
                 # scale the values with log(1 + 1000 * x)
-                spect = torch.log1p(1 + 1000*spect)
+                spect = torch.log1p(1000*spect)
                 # save the spectrogram as numpy array
                 spect_path.parent.mkdir(parents=True, exist_ok=True)
                 save_spectrogram(spect_path, spect.numpy())
@@ -296,10 +296,6 @@ if __name__ == '__main__':
                         type=str, default="20:4", help="time stretch in percentage and stride (default: %(default)s)")
     parser.add_argument("--verbose", action='store_true',
                         help="verbose output")
-    parser.add_argument("--sample_rate", metavar='SR', type=int,
-                        default=22050, help="output sample rate (default: %(default)s)")
-    parser.add_argument("--augment_sample_rate", metavar='SR', type=int, default=44100,
-                        help="sample rate for computing the augmentations (default: same as output sample rate)")
     args = parser.parse_args()
 
     # set the base path
@@ -314,7 +310,7 @@ if __name__ == '__main__':
         raise FileNotFoundError(f"File {args.orig_audio_paths} not found")
 
     # preprocess audio
-    dp = AudioPreprocessing(orig_audio_paths=orig_audio_paths, out_sr=args.sample_rate, aug_sr=args.augment_sample_rate or args.sample_rate,
+    dp = AudioPreprocessing(orig_audio_paths=orig_audio_paths, out_sr=22050, aug_sr=44100,
                             pitch_shift=args.pitch_shift and tuple(
                                 map(int, args.pitch_shift.split(':'))),
                             time_stretch=args.time_stretch and tuple(map(int, args.time_stretch.split(':'))), verbose=args.verbose)
@@ -322,6 +318,6 @@ if __name__ == '__main__':
 
     # compute spectrograms
     mel_args = dict(n_fft=1024, hop_length=441, f_min=30, f_max=11000,
-                    n_mels=128, mel_scale='slaney', normalized='frame_length')
-    sc = SpectCreation(audio_metadata, args.sample_rate, mel_args)
+                    n_mels=128, mel_scale='slaney', normalized='frame_length', power=1)
+    sc = SpectCreation(audio_metadata, 22050, mel_args)
     sc.create_spects()
