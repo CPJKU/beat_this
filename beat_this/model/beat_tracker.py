@@ -39,7 +39,7 @@ class BeatThis(nn.Module):
                 bn1d=nn.BatchNorm1d(spect_dim),
                 add_channel=Rearrange("b f t -> b 1 f t"),
                 conv2d=nn.Conv2d(in_channels=1, out_channels=stem_dim,
-                        kernel_size=(4, 3), stride=(4, 1), padding=(0, 1)),
+                        kernel_size=(4, 3), stride=(4, 1), padding=(0, 1), padding_mode="zeros"),
                 bn2d=nn.BatchNorm2d(stem_dim),
                 activation=nn.GELU(),
             )

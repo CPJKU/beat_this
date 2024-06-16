@@ -38,19 +38,19 @@ def main():
     parser.add_argument("--n-layers", type=int, default=6)
     parser.add_argument("--total-dim", type=int, default=512)
     parser.add_argument(
-        "--input_dropout",
+        "--input-dropout",
         type=float,
         default=0.2,
-        help="dropout rate to apply throughout the model",
+        help="dropout rate to apply between frontend and the main transformer blocks",
     )
     parser.add_argument(
-        "--frontend_dropout",
+        "--frontend-dropout",
         type=float,
         default=0.1,
         help="dropout rate to apply in the frontend",
     )
     parser.add_argument(
-        "--transformer_dropout",
+        "--transformer-dropout",
         type=float,
         default=0.2,
         help="dropout rate to apply in the main transformer blocks",
@@ -108,10 +108,10 @@ def main():
         help="validate every N epochs (default: %(default)s)",
     )
     parser.add_argument(
-        "--time-augmentation",
+        "--tempo-augmentation",
         default=True,
         action=argparse.BooleanOptionalAction,
-        help="Use precomputed time aumentation",
+        help="Use precomputed tempo aumentation",
     )
     parser.add_argument(
         "--pitch-augmentation",
@@ -159,7 +159,7 @@ def main():
     print(args)
 
     if args.logger == "wandb":
-        name = f"BTr-{args.loss}-lr{args.lr}-n{args.n_layers}-h{args.total_dim}-d{args.input_dropout},{args.frontend_dropout},{args.transformer_dropout}-bs{args.batch_size}x{args.accumulate_grad_batches}-aug{args.time_augmentation}{args.pitch_augmentation}{args.mask_augmentation}"
+        name = f"BTr-{args.loss}-lr{args.lr}-n{args.n_layers}-h{args.total_dim}-d{args.input_dropout},{args.frontend_dropout},{args.transformer_dropout}-bs{args.batch_size}x{args.accumulate_grad_batches}-aug{args.tempo_augmentation}{args.pitch_augmentation}{args.mask_augmentation}"
         logger = WandbLogger(project="JBT", entity="vocsep", name=name)
     else:
         logger = None
@@ -173,8 +173,8 @@ def main():
 
     data_dir = Path(__file__).parent.parent.relative_to(Path.cwd()) / "data"
     augmentations = {}
-    if args.time_augmentation:
-        augmentations["time"] = {"min": -20, "max": 20, "stride": 4}
+    if args.tempo_augmentation:
+        augmentations["tempo"] = {"min": -20, "max": 20, "stride": 4}
     if args.pitch_augmentation:
         augmentations["pitch"] = {"min": -5, "max": 6}
     if args.mask_augmentation:

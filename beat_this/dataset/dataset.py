@@ -10,7 +10,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 import concurrent.futures
 from beat_this.utils import PAD_TOKEN, index_to_framewise
-from beat_this.dataset.augment import precomputed_augmentation_filenames, augment_pitchtime, augment_mask
+from beat_this.dataset.augment import precomputed_augmentation_filenames, augment_pitchtempo, augment_mask
 from beat_this.utils import load_spect
 
 DATASET_INFO = {
@@ -37,15 +37,6 @@ class BeatTrackingDataset(Dataset):
     A PyTorch Dataset for beat tracking. This dataset loads preprocessed spectrograms and beat annotations
     from a given data folder and provides them for training or evaluation.
 
-    Attributes:
-        spect_basepath (Path): The base path where the preprocessed spectrograms are stored.
-        annotation_basepath (Path): The base path where the beat annotations are stored.
-        fps (int): The frames per second of the spectrograms.
-        train_length (int): The length of the training sequences in frames.
-        deterministic (bool): If True, the dataset always returns the same sequence for a given index.
-        augmentations (dict): A dictionary of data augmentations to apply.
-        items (list): A list of loaded dataset items.
-
     Args:
         metadata_df (pd.DataFrame): A DataFrame containing metadata about the dataset items.
             Each row should represent one item and contain at least a 'spect_folder' column.
@@ -54,7 +45,7 @@ class BeatTrackingDataset(Dataset):
         train_length (int, optional): The length of the training sequences in frames. Defaults to 1500.
         deterministic (bool, optional): If True, the dataset always returns the same sequence for a given index.
             Defaults to False.
-        augmentations (dict, optional): A dictionary of data augmentations to apply. Defaults to an empty dictionary.
+        augmentations (dict, optional): A dictionary of data augmentations to apply. Possible keys are "tempo", "pitch", and "mask". Defaults to an empty dictionary.
     """
 
     def __init__(self, metadata_df: pd.DataFrame,
@@ -128,7 +119,7 @@ class BeatTrackingDataset(Dataset):
             item = self.items[index]
 
             # select a pitch shift and time stretch
-            item = augment_pitchtime(item, self.augmentations)
+            item = augment_pitchtempo(item, self.augmentations)
             # define the excerpt to use
             original_length = item["spect_length"]
             longer = original_length - self.train_length
@@ -146,7 +137,7 @@ class BeatTrackingDataset(Dataset):
             # load spectrogram
             spect = load_spect(item["spect_path"], start=start_frame, stop=end_frame)
 
-            # augment the spectrogram with mask augmentation
+            # augment the spectrogram with mask augmentation (if required)
             spect = augment_mask(spect, self.augmentations, self.fps)
 
             # prepare annotations
@@ -197,7 +188,7 @@ class BeatDataModule(pl.LightningDataModule):
         fold (int, optional): The fold number for cross-validation. If None, the single split is used. Defaults to None.
     """
     def __init__(self, data_dir, batch_size=8,
-                 train_length=1500, num_workers=20, augmentations={"pitch": {"min": -5, "max": 6}, "time": {"min": -20, "max": 20, "stride": 4}},
+                 train_length=1500, num_workers=20, augmentations={"pitch": {"min": -5, "max": 6}, "tempo": {"min": -20, "max": 20, "stride": 4}},
                  test_dataset="gtzan", train_datasets=None, val_datasets=None, spect_fps=50,
                  length_based_oversampling_factor=0,
                  test_mode=False, fold=None):
@@ -241,7 +232,7 @@ class BeatDataModule(pl.LightningDataModule):
         self.test_mode = test_mode
         self.length_based_oversampling_factor = length_based_oversampling_factor
         # check if augmentations.keys() contains only 'mask', 'pitch' and 'time'
-        if not set(augmentations.keys()).issubset({'mask', 'pitch', 'time'}):
+        if not set(augmentations.keys()).issubset({'mask', 'pitch', 'tempo'}):
             raise ValueError(f"Unsupported augmentations: {augmentations.keys()}")
 
 
