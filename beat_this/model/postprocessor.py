@@ -34,6 +34,8 @@ class Postprocessor:
             postp_beat, postp_downbeat = self.postp_minimal(beat, downbeat, padding_mask)
         elif self.type == "dbn":
            postp_beat, postp_downbeat = self.postp_dbn(beat, downbeat, padding_mask)
+        else:
+            raise ValueError("Invalid postprocessing type")
         # update the model prediction dict
         model_prediction["postp_beat"] = postp_beat
         model_prediction["postp_downbeat"] = postp_downbeat
@@ -42,13 +44,13 @@ class Postprocessor:
     def postp_minimal(self, beat, downbeat, padding_mask):
         # concatenate beat and downbeat in the same tensor of shape (B, T, 2)
         packed_pred = rearrange([beat, downbeat], "c b t -> b t c", b=beat.shape[0], t=beat.shape[1], c=2)
-        # set padded elements to -1000 (= probability zero even in float64)
+        # set padded elements to -1000 (= probability zero even in float64) so they don't influence the maxpool
         pred_logits = packed_pred.masked_fill(~padding_mask.unsqueeze(-1), -1000)
         # reshape to (2*B, T) to apply max pooling
         pred_logits = rearrange(pred_logits, "b t c -> (c b) t")
         # pick maxima within +/- 70ms
         pred_peaks = pred_logits.masked_fill(
-            pred_logits != F.max_pool1d(pred_logits, int(np.ceil(0.07*self.fps)*2+1), 1, int(np.ceil(0.07*self.fps))), -1000)
+            pred_logits != F.max_pool1d(pred_logits, 7, 1, 3), -1000)
         # keep maxima with over 0.5 probability (logit > 0)
         pred_peaks = (pred_peaks > 0)
         #  rearrange back to two tensors of shape (B, T)
