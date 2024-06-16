@@ -4,41 +4,41 @@ from beat_this.utils import PAD_TOKEN
 from pathlib import Path
 
 
-def augment_pitchtime(item, augmentations):
+def augment_pitchtempo(item, augmentations):
     """
-    Apply a randomly chosen pitch or time augmentation to the item.
+    Apply a randomly chosen pitch or tempo augmentation to the item.
 
     Parameters:
     item: dict
         A dictionary representing the item to be augmented. It should contain the following keys:
         - 'spect_folder': The path to the folder containing the spectrogram file.
         - 'spect_lengths': A list containing the length of the spectrograms corresponding to different time stretches.
-        If pitch or time augmentation is applied, the 'spect_length' and 'spect_path' keys will be updated.
+        If pitch or tempo augmentation is applied, the 'spect_length' and 'spect_path' keys will be updated.
 
     augmentations: dict
         A dictionary containing the augmentations to be applied. It can contain either or both of the following keys:
         - 'pitch': A dictionary with 'min' and 'max' keys specifying the range of pitch shifting in semitones.
-        - 'time': A dictionary with 'min' and 'max' keys specifying the range of time stretching factors.
+        - 'tempo': A dictionary with 'min' and 'max' keys specifying the range of time stretching factors.
 
     Returns:
     item: dict
-        The item after applying the augmentation. If a pitch or time augmentation was applied, the 'spect_length' 
+        The item after applying the augmentation. If a pitch or tempo augmentation was applied, the 'spect_length' 
         and 'spect_path' keys will be updated. If no augmentation was applied, 'spect_length' will be set to the 
         original length and 'spect_path' will be set to the original file.
     """
-    # Handle pitch and time augmentations
-    if 'pitch' in augmentations and 'time' in augmentations:
-        # if both pitch and time are enabled, pick one of them
+    # Handle pitch and tempo augmentations
+    if 'pitch' in augmentations and 'tempo' in augmentations:
+        # if both pitch and tempo are enabled, pick one of them
         if np.random.randint(2) == 0:
             # pitch
             item = augment_pitch(item, augmentations["pitch"])
         else:
             # tempo
-            item = augment_time(item, augmentations["time"])
+            item = augment_tempo(item, augmentations["tempo"])
     elif 'pitch' in augmentations:
         item = augment_pitch(item, augmentations["pitch"])
     elif 'tempo' in augmentations:
-        item = augment_time(item, augmentations["time"])
+        item = augment_tempo(item, augmentations["tempo"])
     else:
         # set spect_length to the original value and spect_path to the original file
         item["spect_length"] = item["spect_lengths"][0]
@@ -54,12 +54,9 @@ def augment_pitch(item, pitch_params):
     item["spect_length"] = item["spect_lengths"][0]
     return item
 
-def augment_time(item, time_params):
+def augment_tempo(item, tempo_params):
     """Apply time stretching to the item."""
-    min = time_params["min"]
-    max = time_params["max"]
-    stride = time_params["stride"] if "stride" in time_params else 1
-    percentage = np.random.choice(np.arange(min, max + 1, stride))
+    percentage = np.random.choice(np.arange(tempo_params["min"], tempo_params["max"]+1, tempo_params["stride"]))
     item = stretch_filename(item, percentage)
     item = stretch_annotations(item, percentage)
     # select the spect length from the precomputed values
@@ -107,18 +104,21 @@ def number_of_precomputed_augmentations(augmentations):
     return counter
 
 
-def precomputed_augmentation_filenames(augmentations):
+def precomputed_augmentation_filenames(augmentations, ext="npy"):
     """Return the filenames of the precomputed augmentations."""
-    filenames = ["track_ps0.npy"]
+    filenames = [f"track_ps0.{ext}"]
     for method, params in augmentations.items():
         if method == 'pitch':
             for semitones in range(params["min"], params["max"] + 1):
-                filenames.append(f"track_ps{semitones}.npy")
+                if semitones == 0:
+                    continue
+                filenames.append(f"track_ps{semitones}.{ext}")
         elif method == 'tempo':
             for percentage in range(params["min"], params["max"] + 1, params["stride"]):
-                filenames.append(f"track_ps0_ts{percentage}.npy")
+                if percentage == 0:
+                    continue
+                filenames.append(f"track_ps0_ts{percentage}.{ext}")
     return filenames
-
 
 
 def augment_mask(spect, augmentations: dict, fps: int):
