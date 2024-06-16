@@ -94,7 +94,7 @@ class PLBeatThis(LightningModule):
 
         return metrics, piecewise
     
-    def _compute_metrics_target(self, batch, model_prediction, target="beat", step="val"):  
+    def _compute_metrics_target(self, batch, model_prediction, target, step):  
 
         def compute_item(pospt_pred, truth_orig_target):
             # take the ground truth from the original version, so there are no quantization errors
