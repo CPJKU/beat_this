@@ -17,7 +17,7 @@ from beat_this.model.pl_module import PLBeatThis
 
 torch.multiprocessing.set_sharing_strategy("file_system")
 # for repeatability
-JBT_SEED = int(os.environ.get("JBT_SEED", 0))
+JBT_SEED = int(os.environ.get("BEAT_THIS_SEED", 0))
 seed_everything(JBT_SEED, workers=True)
 
 

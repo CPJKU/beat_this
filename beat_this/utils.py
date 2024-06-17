@@ -42,8 +42,8 @@ def load_spect(file_path, start=None, stop=None):
     Optionally returns an excerpt with positions given in samples.
     """
     # load full file as memory map
-    data = np.load(file_path, mmap_mode='r+')
+    data = np.load(file_path, mmap_mode='c')
     # pick excerpt
     if start is not None or stop is not None:
-        data = data[:,start:stop]
-    return data.T
+        data = data[start:stop]
+    return data

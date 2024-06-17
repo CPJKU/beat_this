@@ -180,8 +180,10 @@ class BeatDataModule(pl.LightningDataModule):
         num_workers (int, optional): The number of worker processes to use for data loading. Defaults to 20.
         augmentations (dict, optional): A dictionary of data augmentations to apply. Defaults to {"pitch": {"min": -5, "max": 6}, "time": {"min": -20, "max": 20, "stride": 4}}.
         test_dataset (str, optional): The name of the dataset to use for testing. Defaults to "gtzan".
-        train_datasets (list, optional): A list of dataset names to use for training. If None, all datasets except the test_dataset are used. Defaults to None.
-        val_datasets (list, optional): A list of dataset names to use for validation. If None, the test_dataset is used. Defaults to None.
+        train_datasets (list, optional): A list of dataset names to use for training. If None, a percentage of all datasets except the test_dataset is used. Defaults to None.
+        val_datasets (list, optional): A list of dataset names to use for validation. If None, a percentage of all datasets with downbeat information is used. 
+            If it is set to an empty string, all data are used for training, and no validation is performed; practically the validation still occur on the same training data,
+             to avoid exceptions. Defaults to None.
         spect_fps (int, optional): The frames per second of the spectrograms. Defaults to 50.
         length_based_oversampling_factor (int, optional): The factor by which to oversample based on sequence length. Defaults to 0.
         test_mode (bool, optional): If True, the DataModule is in test mode and only loads the test dataset. Defaults to False.
@@ -205,6 +207,7 @@ class BeatDataModule(pl.LightningDataModule):
         self.metadata_df = pd.read_csv(metadata_file)
         # only keep datasets that are both in DATASET_INFO and in the metadata
         usable_datasets = handle_datasets_mismatch(self.metadata_df)
+        self.usable_datasets = usable_datasets
         self.metadata_df = self.metadata_df[self.metadata_df.dataset.isin(usable_datasets)].reset_index(drop=True)
         # find and load manual train/val splits
         if fold is not None:
@@ -218,9 +221,13 @@ class BeatDataModule(pl.LightningDataModule):
                 cv["split"] = cv["fold"].apply(lambda fold_idx: 'val' if fold_idx == fold else 'train')
                 self.manual_splits[dataset] = cv
         else:
+            for dataset in usable_datasets:
+                if not (annotation_dir / dataset / 'split.csv').exists() and dataset != test_dataset:
+                    raise ValueError(f"Missing split file for dataset {dataset}. This need to be present in the beat_annotations folder.")
             self.manual_splits = {dataset: pd.read_csv(annotation_dir / dataset / 'split.csv')
                                 for dataset in usable_datasets
                                 if (annotation_dir / dataset / 'split.csv').exists()}
+            print("Manual splits loaded:", self.manual_splits.keys())
         # remember remaining parameters
         self.batch_size = batch_size
         self.train_length = train_length
@@ -244,22 +251,24 @@ class BeatDataModule(pl.LightningDataModule):
         test_idx = self.metadata_df.index[self.metadata_df["dataset"] == self.test_dataset]
         # create the train/val split
         # figure out those datasets that have a manual split
-        manual_idx = self.metadata_df.index[self.metadata_df["dataset"].isin(set(self.manual_splits.keys()))]
-        # if not split manually, datasets without downbeats are only used for training
-        train_only_datasets = set(name for name, info in DATASET_INFO.items()
-                                  if not name in self.manual_splits and not info["downbeat"])
-        train_only_idx = self.metadata_df.index[self.metadata_df["dataset"].isin(train_only_datasets)]
-        # now create a new dataframe and split randomly, stratified by datasets
-        trainval_df = (self.metadata_df
-                       .drop(index=test_idx, inplace=False)
-                       .drop(index=manual_idx, inplace=False)
-                       .drop(index=train_only_idx, inplace=False))
-        if len(trainval_df):
-            train_idx, val_idx = train_test_split(trainval_df.index, test_size=0.15, stratify=self.metadata_df["dataset"][trainval_df.index].tolist(), random_state=0)
-        else:
-            train_idx = np.zeros(0, dtype=int)
-            val_idx = np.zeros(0, dtype=int)
+        # manual_idx = self.metadata_df.index[self.metadata_df["dataset"].isin(set(self.manual_splits.keys()))]
+        # # if not split manually, datasets without downbeats are only used for training
+        # train_only_datasets = set(name for name, info in DATASET_INFO.items()
+        #                           if not name in self.manual_splits and not info["downbeat"])
+        # train_only_idx = self.metadata_df.index[self.metadata_df["dataset"].isin(train_only_datasets)]
+        # # now create a new dataframe and split randomly, stratified by datasets
+        # trainval_df = (self.metadata_df
+        #                .drop(index=test_idx, inplace=False)
+        #                .drop(index=manual_idx, inplace=False)
+        #                .drop(index=train_only_idx, inplace=False))
+        # if len(trainval_df):
+        #     train_idx, val_idx = train_test_split(trainval_df.index, test_size=0.15, stratify=self.metadata_df["dataset"][trainval_df.index].tolist(), random_state=0)
+        # else:
+        #     train_idx = np.zeros(0, dtype=int)
+        #     val_idx = np.zeros(0, dtype=int)
         # append manual splits
+        train_idx = np.zeros(0, dtype=int)
+        val_idx = np.zeros(0, dtype=int)
         for dataset, split_df in self.manual_splits.items():
             df_subset = self.metadata_df[self.metadata_df["dataset"] == dataset].copy()
             if df_subset.shape[0] != split_df.shape[0]:
@@ -270,8 +279,8 @@ class BeatDataModule(pl.LightningDataModule):
             split_data_df = df_subset.reset_index().merge(split_df, on='piece').set_index('index')
             train_idx = np.concatenate([train_idx, split_data_df.index[split_data_df.split == "train"]])
             val_idx = np.concatenate([val_idx, split_data_df.index[split_data_df.split == "val"]])
-        # append train-only datasets
-        train_idx = np.concatenate([train_idx, train_only_idx])
+        # # append train-only datasets
+        # train_idx = np.concatenate([train_idx, train_only_idx])
         # treat rwc as 3 different datasets with rwc_popular, rwc_jazz, rwc_classical, rwc_royalty-free. Necessary for literature-compatible dataset selection
         if "rwc" in self.metadata_df.dataset.unique():
             self.metadata_df.loc[self.metadata_df.dataset == "rwc", "dataset"] = self.metadata_df.loc[self.metadata_df.dataset == "rwc", "spect_folder"].apply(lambda p: "rwc_" + Path(p).name.split("_")[1])
