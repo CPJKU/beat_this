@@ -7,13 +7,14 @@ import numpy as np
 import os
 import pandas as pd
 import argparse
-from pedalboard import time_stretch
+from pedalboard import time_stretch, Pedalboard, PitchShift
 import concurrent.futures
 from git import Repo
 import wave
 import torchaudio
 import torch
 from beat_this.utils import get_spect_len, filename_to_augmentation
+from beat_this.dataset.augment import precomputed_augmentation_filenames
 
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
@@ -21,7 +22,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 def load_audio(path):
     try:
-        return sf.read(path)
+        return sf.read(path, dtype='float64')
     except Exception:
         # some files are not readable by soundfile, try madmom
         return madmom.io.load_audio_file(str(path), dtype="float64")
@@ -33,6 +34,7 @@ def save_audio(path, waveform, samplerate, resample_from=None):
                                     orig_sr=resample_from,
                                     target_sr=samplerate)
     try:
+        waveform = np.asarray(waveform, dtype=np.float64)
         sf.write(path, waveform, samplerate=samplerate)
     except KeyboardInterrupt:
         path.unlink()  # avoid half-written files
@@ -54,32 +56,38 @@ def get_wav_length(filename):
 
 
 class SpectCreation():
-    def __init__(self, audio_metadata, audio_sr, mel_args):
+    def __init__(self, pitch_shift, time_stretch, audio_sr, mel_args):
         super(SpectCreation, self).__init__()
         # define the directories
         self.preprocessed_dir = BASEPATH / 'data' / 'preprocessed'
+        self.mono_tracks_dir = self.preprocessed_dir / 'mono_tracks'
         self.spectrograms_dir = self.preprocessed_dir / 'spectrograms'
+        self.annotations_dir = BASEPATH / 'data' / 'beat_annotations'
         # remember the audio metadata
         self.audio_sr = audio_sr
-        self.audio_metadata = audio_metadata
         # create the mel spectrogram class
         self.spect_class = torchaudio.transforms.MelSpectrogram(
             sample_rate=audio_sr, **mel_args)
+        self.augmentations = {"pitch": {"min": pitch_shift[0], "max": pitch_shift[1]}, "tempo": { "min": -time_stretch[0], "max": time_stretch[0]+1, "stride": time_stretch[1]}}
+        # compute the names to consider according to the augmentations
+        self.filenames = precomputed_augmentation_filenames(self.augmentations, "wav")
 
     def create_spects(self):
         print("Creating spectrograms ...")
         with concurrent.futures.ThreadPoolExecutor() as executor:
             futures = []
-            for _, row in self.audio_metadata.iterrows():
-                futures.append(executor.submit(self.create_spect_piece,
-                                               row["processed_path"],
-                                               row["beat_path"],
-                                               row["dataset"]))
-            metadata = [r for future in tqdm(concurrent.futures.as_completed(
-                futures), total=len(futures)) for r in future.result()]
+            for dataset_dir in self.mono_tracks_dir.iterdir():
+                for piece_dir in dataset_dir.iterdir():
+                    futures.append(executor.submit(self.create_spect_piece,
+                                                    piece_dir,
+                                                    Path(dataset_dir.name) / 'annotations' / 'beats' / f'{piece_dir.name}.beats',
+                                                    dataset_dir.name))
+            metadata = [future.result()
+                        for future in tqdm(concurrent.futures.as_completed(futures),
+                                           total=len(futures))]
 
         # save metadata
-        df = pd.DataFrame.from_dict(metadata).sort_values(by="spect_folder")
+        df = pd.DataFrame.from_dict([m[0] for m in metadata if m is not None]).sort_values(by="spect_folder")
         df.to_csv(self.spectrograms_dir /
                   'spectrograms_metadata.csv', index=False)
         print(f"Created {len(df)} spectrograms in {self.spectrograms_dir}")
@@ -87,10 +95,22 @@ class SpectCreation():
     def create_spect_piece(self, preprocessed_audio_folder, beat_path, dataset_name):
         metadata = []
         spect_lens = {} # store the length of the spectrograms for each tempo augmentation. The key is the stretch.
-        for audio_path in Path(self.preprocessed_dir, "mono_tracks", preprocessed_audio_folder).iterdir():
-            spect_path = self.spectrograms_dir / \
-                preprocessed_audio_folder / f'{audio_path.stem}.npy'
-            if not spect_path.exists():
+        for filename in self.filenames:
+            if not (self.annotations_dir / beat_path).exists():
+                print(f"beat annotation {beat_path} not found for {preprocessed_audio_folder}")
+                return
+            audio_path = preprocessed_audio_folder / filename
+            spect_path = self.spectrograms_dir / dataset_name/ preprocessed_audio_folder.name / f'{Path(filename).stem}.npy'
+            if spect_path.exists():
+                # load the spectrogram to get the length
+                try:
+                    spect = np.load(spect_path, mmap_mode='r')
+                    compute_spect = False
+                except:
+                    compute_spect = True
+            else:
+                compute_spect = True
+            if compute_spect:
                 waveform, sr = load_audio(audio_path)
                 assert sr == self.audio_sr, f"Sample rate mismatch: {sr} != {self.audio_sr}"
                 # compute the mel spectrogram
@@ -100,13 +120,12 @@ class SpectCreation():
                 spect = torch.log1p(1000*spect)
                 # save the spectrogram as numpy array
                 spect_path.parent.mkdir(parents=True, exist_ok=True)
-                save_spectrogram(spect_path, spect.numpy())
-            else: # load the spectrogram to get the length
-                spect = np.load(spect_path, mmap_mode='r')
+                save_spectrogram(spect_path, spect.numpy().T)
+                
             # save the length of the spectrogram
-            spect_lens[filename_to_augmentation(audio_path.stem)["stretch"]] = spect.shape[-1]
+            spect_lens[filename_to_augmentation(audio_path.stem)["stretch"]] = spect.shape[0]
         # save the metadata. Each tempo augmentation get a dedicated column
-        metadata.append({"spect_folder": preprocessed_audio_folder,
+        metadata.append({"spect_folder": spect_path.parent.relative_to(self.spectrograms_dir),
                          "beat_path": beat_path,
                          "dataset": dataset_name,
                             **{f"spect_len_ts{ts}": spect_lens.get(ts, 0) for ts in sorted(spect_lens.keys())}})
@@ -188,29 +207,30 @@ class AudioPreprocessing(object):
                            dataset_name, audio_path.stem)
         # derive the name of the unaugmented file
         mono_path = folder_path / f'track_ps0.{self.ext}'
-        if mono_path.exists():
+        # derive the name of all augmented files
+        augmentations = {"pitch": {"min": self.pitch_shift[0], "max": self.pitch_shift[1]}, "tempo": { "min": -self.time_stretch[0], "max": self.time_stretch[0]+1, "stride": self.time_stretch[1]}}
+        augmentations_path = precomputed_augmentation_filenames(augmentations, self.ext)
+        # stop here if all files exists
+        if mono_path.exists() and all((folder_path / aug).exists() for aug in augmentations_path):
             if self.verbose:
-                print(f"{mono_path} exists, not loading yet")
-            # defer loading until it becomes necessary
-            audio_length = None
-            waveform = None
+                print(f"All files in {folder_path} exists, skipping")
+            return
+
+        # load audio
+        try:
+            waveform, sr = load_audio(audio_path)
+        except Exception as e:
+            print("Problem with loading waveform", audio_path, e)
+            return
+        folder_path.mkdir(parents=True, exist_ok=True)
+        if waveform.ndim == 1 and sr == self.out_sr and audio_path.suffix == f'.{self.ext}':
+            # shortcut: copy original file to mono path location
+            os.system("cp '{}' '{}'".format(audio_path, mono_path))
         else:
-            # load audio
-            try:
-                waveform, sr = load_audio(audio_path)
-            except Exception as e:
-                print("Problem with loading waveform", audio_path, e)
-                return
-            folder_path.mkdir(parents=True, exist_ok=True)
-            if waveform.ndim == 1 and sr == self.out_sr and audio_path.suffix == f'.{self.ext}':
-                # shortcut: copy original file to mono path location
-                os.system("cp '{}' '{}'".format(audio_path, mono_path))
-                # remember the audio length at rate self.out_sr
-                audio_length = len(waveform)
-            else:
-                # we need to do some conversions for the unaugmented file
-                if waveform.ndim != 1:
-                    waveform = np.mean(waveform, axis=1)
+            # we need to do some conversions for the unaugmented file
+            if waveform.ndim != 1:
+                waveform = np.mean(waveform, axis=1)
+            if not mono_path.exists():
                 if sr != self.out_sr:
                     waveform_out = librosa.resample(waveform, orig_sr=sr,
                                                     target_sr=self.out_sr)
@@ -218,72 +238,68 @@ class AudioPreprocessing(object):
                     waveform_out = waveform
                 # save mono file
                 save_audio(mono_path, waveform_out, self.out_sr)
-                # remember the audio length at rate self.out_sr
-                audio_length = len(waveform_out)
-            if (self.pitch_shift or self.time_stretch) and (sr != self.aug_sr):
-                waveform = librosa.resample(
-                    waveform, orig_sr=sr, target_sr=self.aug_sr)
-        # handle the requested augmentations
+        if (self.pitch_shift or self.time_stretch) and (sr != self.aug_sr):
+            waveform = librosa.resample(
+                waveform, orig_sr=sr, target_sr=self.aug_sr)
+            
+        # handle the requested augmentations          
+        # pedalboard requires float32, convert
+        waveform = np.asarray(waveform, dtype=np.float32)
         shifts = range(
             self.pitch_shift[0], self.pitch_shift[1]+1) if self.pitch_shift else [0]
         stretches = self.time_stretch if self.time_stretch else [0]
         for shift in shifts:  # pitch augmentation
-            self.augment_audio_file(
-                folder_path, mono_path, audio_path, waveform, shift, 0)
+            augment_audio_file(
+                folder_path, waveform, aug_type = "shift", amount = shift, aug_sr = self.aug_sr, out_sr = self.out_sr, ext = self.ext, verbose = self.verbose)
         for stretch in stretches:  # tempo augmentation
-            self.augment_audio_file(
-                folder_path, mono_path, audio_path, waveform, 0, stretch)
+            augment_audio_file(
+                folder_path, waveform, aug_type = "stretch", amount = stretch, aug_sr = self.aug_sr, out_sr = self.out_sr, ext = self.ext, verbose=self.verbose)
 
-        if audio_length is None:
-            audio_length = get_wav_length(mono_path)
-        return {"dataset": dataset_name,
-                "original_path": str(audio_path),
-                "processed_path": dataset_name + '/' + audio_path.stem,
-                "beat_path": beat_path.relative_to(self.annotation_dir),
-                }
+        return
 
-    def augment_audio_file(self, folder_path, mono_path, audio_path, waveform, shift, stretch):
-        # skip if we hit the no-augmentation combination
-        if not shift and not stretch:
-            return
-        # figure out the file name
-        suffix = f"_ps{shift}"
-        if stretch != 0:
-            suffix = suffix + f"_ts{stretch}"
-        out_path = Path(folder_path, f'track{suffix}.{self.ext}')
-        # skip if it exists
-        if out_path.exists():
-            if self.verbose:
-                print(f"{out_path} exists, skipping")
-            return
-        # otherwise compute it and write it out
-        if waveform is None:
-            # waveform not loaded yet, load at the augmentation rate
-            # load from the original location and resample it
-            if self.verbose:
-                print(f"loading {audio_path}")
-            waveform, sr = load_audio(audio_path)
-            if waveform.ndim != 1:
-                waveform = np.mean(waveform, axis=1)
-            if sr != self.aug_sr:
-                waveform = librosa.resample(waveform, orig_sr=sr,
-                                            target_sr=self.aug_sr)
-        # pedalboard requires float32, convert the first time needed
-        waveform = np.asarray(waveform, dtype=np.float32)
-        # time stretch alone, or a combination
-        if self.verbose:
+    
+def augment_audio_file(folder_path, waveform, aug_type, amount, aug_sr, out_sr, ext, verbose):
+    # figure out the file name
+    if aug_type == "stretch":
+        stretch = amount
+        shift = 0
+    elif aug_type == "shift":
+        shift = amount
+        stretch = 0
+    else:
+        raise ValueError(f"Unknown augmentation mode {aug_type}")
+    suffix = f"_ps{shift}"
+    if stretch != 0:
+        suffix = suffix + f"_ts{stretch}"
+    out_path = Path(folder_path, f'track{suffix}.{ext}')
+    # skip if it exists
+    if out_path.exists():
+        if verbose:
+            print(f"{out_path} exists, skipping")
+        return
+    # otherwise compute it and write it out
+    # time stretch or pitch shift alone
+    if aug_type == "shift":
+        if verbose: print(f"computing {out_path} with {shift=}")
+        # pitch shift alone
+        board = Pedalboard([
+            PitchShift(semitones=shift),
+        ])
+        # apply pedalboard
+        augmented = board(waveform, aug_sr)
+    else: # type == stretch
+        if verbose:
             print(
-                f"computing {out_path} with {shift=}, {stretch=}")
-        augmented = time_stretch(waveform, self.aug_sr,
-                                 stretch_factor=1 + stretch / 100,
-                                 pitch_shift_in_semitones=shift,
-                                 ).squeeze()
-        # save to file
-        if self.verbose:
-            print(f"writing {out_path}")
-        save_audio(out_path, augmented, self.out_sr,
-                   resample_from=self.aug_sr)
-
+                f"computing {out_path} with {stretch=}")
+        augmented = time_stretch(waveform, aug_sr,
+                                stretch_factor=1 + stretch / 100,
+                                pitch_shift_in_semitones=0.0,
+                                ).squeeze()
+    # save to file
+    if verbose:
+        print(f"writing {out_path}")
+    save_audio(out_path, augmented, out_sr,
+            resample_from=aug_sr)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -314,10 +330,13 @@ if __name__ == '__main__':
                             pitch_shift=args.pitch_shift and tuple(
                                 map(int, args.pitch_shift.split(':'))),
                             time_stretch=args.time_stretch and tuple(map(int, args.time_stretch.split(':'))), verbose=args.verbose)
-    audio_metadata = dp.preprocess_audio()
+    dp.preprocess_audio()
 
     # compute spectrograms
     mel_args = dict(n_fft=1024, hop_length=441, f_min=30, f_max=11000,
                     n_mels=128, mel_scale='slaney', normalized='frame_length', power=1)
-    sc = SpectCreation(audio_metadata, 22050, mel_args)
+    audio_folder = Path(BASEPATH, 'data', 'preprocessed', 'mono_tracks')
+    sc = SpectCreation(pitch_shift=args.pitch_shift and tuple(map(int, args.pitch_shift.split(':'))),
+                        time_stretch=args.time_stretch and tuple(map(int, args.time_stretch.split(':'))), 
+                            audio_sr=22050, mel_args=mel_args)
     sc.create_spects()
