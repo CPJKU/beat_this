@@ -186,14 +186,12 @@ class BeatDataModule(pl.LightningDataModule):
              to avoid exceptions. Defaults to None.
         spect_fps (int, optional): The frames per second of the spectrograms. Defaults to 50.
         length_based_oversampling_factor (int, optional): The factor by which to oversample based on sequence length. Defaults to 0.
-        test_mode (bool, optional): If True, the DataModule is in test mode and only loads the test dataset. Defaults to False.
         fold (int, optional): The fold number for cross-validation. If None, the single split is used. Defaults to None.
     """
     def __init__(self, data_dir, batch_size=8,
                  train_length=1500, num_workers=20, augmentations={"pitch": {"min": -5, "max": 6}, "tempo": {"min": -20, "max": 20, "stride": 4}},
-                 test_dataset="gtzan", train_datasets=None, val_datasets=None, spect_fps=50,
-                 length_based_oversampling_factor=0,
-                 test_mode=False, fold=None):
+                 test_dataset="gtzan", hung_data = False, no_val= False, spect_fps=50,
+                 length_based_oversampling_factor=0, fold=None):
         super().__init__()
         self.save_hyperparameters()
         self.initialized = False
@@ -232,11 +230,10 @@ class BeatDataModule(pl.LightningDataModule):
         self.batch_size = batch_size
         self.train_length = train_length
         self.test_dataset = test_dataset
-        self.train_datasets = train_datasets
-        self.val_datasets = val_datasets
+        self.hung_data = hung_data
+        self.no_val = no_val
         self.num_workers = num_workers
         self.augmentations = augmentations
-        self.test_mode = test_mode
         self.length_based_oversampling_factor = length_based_oversampling_factor
         # check if augmentations.keys() contains only 'mask', 'pitch' and 'time'
         if not set(augmentations.keys()).issubset({'mask', 'pitch', 'tempo'}):
@@ -247,26 +244,7 @@ class BeatDataModule(pl.LightningDataModule):
         if self.initialized:
             return
         # split the dataset in train, validation, and test
-        # start with test set, since this is hardcoded
         test_idx = self.metadata_df.index[self.metadata_df["dataset"] == self.test_dataset]
-        # create the train/val split
-        # figure out those datasets that have a manual split
-        # manual_idx = self.metadata_df.index[self.metadata_df["dataset"].isin(set(self.manual_splits.keys()))]
-        # # if not split manually, datasets without downbeats are only used for training
-        # train_only_datasets = set(name for name, info in DATASET_INFO.items()
-        #                           if not name in self.manual_splits and not info["downbeat"])
-        # train_only_idx = self.metadata_df.index[self.metadata_df["dataset"].isin(train_only_datasets)]
-        # # now create a new dataframe and split randomly, stratified by datasets
-        # trainval_df = (self.metadata_df
-        #                .drop(index=test_idx, inplace=False)
-        #                .drop(index=manual_idx, inplace=False)
-        #                .drop(index=train_only_idx, inplace=False))
-        # if len(trainval_df):
-        #     train_idx, val_idx = train_test_split(trainval_df.index, test_size=0.15, stratify=self.metadata_df["dataset"][trainval_df.index].tolist(), random_state=0)
-        # else:
-        #     train_idx = np.zeros(0, dtype=int)
-        #     val_idx = np.zeros(0, dtype=int)
-        # append manual splits
         train_idx = np.zeros(0, dtype=int)
         val_idx = np.zeros(0, dtype=int)
         for dataset, split_df in self.manual_splits.items():
@@ -284,21 +262,17 @@ class BeatDataModule(pl.LightningDataModule):
         # treat rwc as 3 different datasets with rwc_popular, rwc_jazz, rwc_classical, rwc_royalty-free. Necessary for literature-compatible dataset selection
         if "rwc" in self.metadata_df.dataset.unique():
             self.metadata_df.loc[self.metadata_df.dataset == "rwc", "dataset"] = self.metadata_df.loc[self.metadata_df.dataset == "rwc", "spect_folder"].apply(lambda p: "rwc_" + Path(p).name.split("_")[1])
-        # limit the training dataset if self.train_datasets is not None
-        if self.train_datasets is not None:
-            if self.train_datasets == ["hung"]:
-                # use the same train dataset from MODELING BEATS AND DOWNBEATS WITH A TIME-FREQUENCY TRANSFORMER
-                self.train_datasets = ["hainsworth", "ballroom", "hjdb", "beatles", "rwc_popular", "simac", "smc", "harmonix"]
-            train_idx = train_idx[self.metadata_df["dataset"][train_idx].isin(self.train_datasets)]
-        # limit the validation dataset if self.val_datasets is not None
-        if self.val_datasets is not None:
-            if self.val_datasets == [""]: # don't validate, use all pieces for training. Practically we still validate on a subset of the training pieces to avoid exceptions
-                if self.train_datasets is not None:
-                    # exclude the no_training datasets from the validation set before merging the two
-                    val_idx = val_idx[self.metadata_df["dataset"][val_idx].isin(self.train_datasets)]
-                train_idx = np.concatenate([train_idx, val_idx])
-            else:
-                val_idx = val_idx[self.metadata_df["dataset"][val_idx].isin(self.val_datasets)]
+        if self.hung_data:
+            # use the same train dataset from MODELING BEATS AND DOWNBEATS WITH A TIME-FREQUENCY TRANSFORMER (validation set stay the same with all datasets)
+            hung_train_datasets = ["hainsworth", "ballroom", "hjdb", "beatles", "rwc_popular", "simac", "smc", "harmonix"]
+            train_idx = train_idx[self.metadata_df["dataset"][train_idx].isin(hung_train_datasets)]
+        if self.no_val:
+            print("No validation set. Training on all data.")
+            # train on all available data (escluding test). Validation metrics are still computed for code compatibility, but do not convey any useful information.
+            if self.hung_data:
+                # exclude the no hung datasets from the validation set before merging train and val
+                val_idx = val_idx[self.metadata_df["dataset"][val_idx].isin(hung_train_datasets)]
+            train_idx = np.concatenate([train_idx, val_idx])
         if self.length_based_oversampling_factor:
             # oversample the training set according to the audio_length information, so that long pieces are more likely to be sampled
             old_len = len(train_idx)
@@ -318,29 +292,25 @@ class BeatDataModule(pl.LightningDataModule):
         csvsets = set(self.metadata_df["dataset"].unique())
         infosets = set(DATASET_INFO.keys())
         if (csvsets - usedsets):
-            print("Datasets in CSV, but not used:", sorted(csvsets - usedsets))
+            print("Datasets in spectrogram CSV, but not used:", sorted(csvsets - usedsets))
         if (infosets - usedsets):
             print("Datasets in DATASET_INFO, but not used:", sorted(infosets - usedsets))
         # go back to rwc dataset to avoid further problems with paths
         self.metadata_df.loc[self.metadata_df.dataset.str.startswith("rwc_"), "dataset"] = "rwc"
 
-        if self.test_mode:
-            max_count = 50
-        else:
-            max_count = None
         print("Creating datasets...")
         shared_kwargs = dict(data_folder=self.data_dir,
                             spect_fps=self.spect_fps,
                             train_length=self.train_length)
-        self.train_dataset = BeatTrackingDataset(self.metadata_df.iloc[train_idx[:max_count]].copy(),
+        self.train_dataset = BeatTrackingDataset(self.metadata_df.iloc[train_idx].copy(),
                                                  deterministic=False,
                                                  augmentations=self.augmentations,
                                                  **shared_kwargs)
-        self.val_dataset = BeatTrackingDataset(self.metadata_df.iloc[val_idx[:max_count]].copy(),
+        self.val_dataset = BeatTrackingDataset(self.metadata_df.iloc[val_idx].copy(),
                                                 deterministic=True,
                                                 augmentations={},
                                                 **shared_kwargs)
-        self.test_dataset = BeatTrackingDataset(self.metadata_df.iloc[test_idx[:max_count]].copy(),
+        self.test_dataset = BeatTrackingDataset(self.metadata_df.iloc[test_idx].copy(),
                                                 deterministic=True,
                                                 augmentations={},
                                                 **shared_kwargs)
@@ -348,7 +318,7 @@ class BeatDataModule(pl.LightningDataModule):
         self.initialized = True
 
     def train_dataloader(self):
-        return DataLoader(self.train_dataset, num_workers=self.num_workers, batch_size=self.batch_size, shuffle=True, drop_last=True)
+        return DataLoader(self.train_dataset, num_workers=self.num_workers, batch_size=self.batch_size, shuffle=True, drop_last=True, pin_memory=True)
 
     def val_dataloader(self):
         # Warning: for performances, this only runs on the middle excerpt of the long pieces

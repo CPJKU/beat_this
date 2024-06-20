@@ -22,7 +22,7 @@ class BeatThis(nn.Module):
         n_layers=6,
         head_dim=32,
         stem_dim=32,
-        dropout={"input": 0.2, "frontend": 0.1, "transformer": 0.2},
+        dropout={"frontend": 0.1,"middle": 0.2, "transformer": 0.2},
     ):
         super().__init__()
 
@@ -30,7 +30,7 @@ class BeatThis(nn.Module):
         n_heads = total_dim // head_dim
         rotary_embed = RotaryEmbedding(head_dim)
 
-        self.input_dropout = nn.Dropout(dropout["input"])
+        self.middle_dropout = nn.Dropout(dropout["middle"])
 
         # create the frontend
         stem = nn.Sequential(
@@ -39,7 +39,7 @@ class BeatThis(nn.Module):
                 bn1d=nn.BatchNorm1d(spect_dim),
                 add_channel=Rearrange("b f t -> b 1 f t"),
                 conv2d=nn.Conv2d(in_channels=1, out_channels=stem_dim,
-                        kernel_size=(4, 3), stride=(4, 1), padding=(0, 1), padding_mode="zeros"),
+                        kernel_size=(4, 3), stride=(4, 1), padding=(0, 1), bias=False),
                 bn2d=nn.BatchNorm2d(stem_dim),
                 activation=nn.GELU(),
             )
@@ -50,25 +50,16 @@ class BeatThis(nn.Module):
             frontend_blocks.append(
                 nn.Sequential(
                     OrderedDict(
-                        fpartial=PartialRoformer(  # frequency directed partial transformer
+                        partial=PartialFTTrasformer(
                             dim=_dim,
                             dim_head=head_dim,
                             n_head=_dim // head_dim,
-                            direction="F",
-                            rotary_embed=rotary_embed,
-                            dropout=dropout["frontend"],
-                        ),
-                        tpartial=PartialRoformer(  # time directed partial transformer
-                            dim=_dim,
-                            dim_head=head_dim,
-                            n_head=_dim // head_dim,
-                            direction="T",
                             rotary_embed=rotary_embed,
                             dropout=dropout["frontend"],
                         ),
                         # conv block
                         conv2d=nn.Conv2d(in_channels=_dim, out_channels=_dim * 2,
-                                kernel_size=(2, 3), stride=(2, 1), padding=(0, 1)),
+                                kernel_size=(2, 3), stride=(2, 1), padding=(0, 1), bias=False),
                         # out_channels : 64, 128, 256
                         # freqs : 16, 8, 4 (due to the stride=2)
                         norm=nn.BatchNorm2d(_dim*2),
@@ -111,7 +102,7 @@ class BeatThis(nn.Module):
 
     def forward(self, x):
         x = self.frontend(x)
-        x = self.input_dropout(x)
+        x = self.middle_dropout(x)
         x = self.transformer_blocks(x)
         x = self.task_heads(x)
         return x
@@ -146,9 +137,53 @@ class PartialRoformer(nn.Module):
         x = x + self.ff(x)
         x = rearrange(x, f"{pattern} -> b c f t", b=b)
         return x
+    
+class PartialFTTrasformer(nn.Module):
+    """
+    Takes a (batch, channels, freqs, time) input, applies self-attention and
+    a feed-forward block alternatively across frequencies and across time.
+
+    Returns a tensor of the same shape as the input. 
+    """
+
+    def __init__(self, dim, dim_head, n_head, rotary_embed, dropout):
+        super().__init__()
+
+        assert dim % dim_head == 0, "dim must be divisible by dim_head"
+        assert dim // dim_head == n_head, "n_head must be equal to dim // dim_head"
+        # frequency directed partial transformer
+        self.attnF = roformer.Attention(dim, heads=n_head, dim_head=dim_head,
+                                       dropout=dropout, rotary_embed=rotary_embed)
+        self.ffF = roformer.FeedForward(dim, dropout=dropout)
+        # time directed partial transformer
+        self.attnT = roformer.Attention(dim, heads=n_head, dim_head=dim_head,
+                                       dropout=dropout, rotary_embed=rotary_embed)
+        self.ffT = roformer.FeedForward(dim, dropout=dropout)
+
+    def forward(self, x):
+        b = len(x)
+        # if self.direction == 'f':
+        #     pattern = "(b t) f c"
+        # elif self.direction == 't':
+        #     pattern = "(b f) t c"
+        # frequency directed partial transformer
+        x = rearrange(x, f"b c f t -> (b t) f c")
+        x = x + self.attnF(x)
+        x = x + self.ffF(x)
+        # time directed partial transformer
+        x = rearrange(x, f"(b t) f c ->(b f) t c", b=b)
+        x = x + self.attnT(x)
+        x = x + self.ffT(x)
+        x = rearrange(x, f"(b f) t c -> b c f t", b=b)
+        return x
 
 
 class SumHead(nn.Module):
+    """
+    A PyTorch module that produces the final beat and downbeat prediction logits.
+    The beats are a sum of all beats and all downbeats predictions, to reduce the prediction
+    of downbeats which are not beats.
+    """
     def __init__(self, input_dim):
         super().__init__()
         self.beat_downbeat_lin = nn.Linear(input_dim, 2)

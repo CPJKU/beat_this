@@ -15,10 +15,10 @@ from beat_this.dataset.dataset import BeatDataModule
 from beat_this.model.pl_module import PLBeatThis
 
 
-torch.multiprocessing.set_sharing_strategy("file_system")
+# torch.multiprocessing.set_sharing_strategy("file_system")
 # for repeatability
-JBT_SEED = int(os.environ.get("BEAT_THIS_SEED", 0))
-seed_everything(JBT_SEED, workers=True)
+BEAT_THIS_SEED = int(os.environ.get("BEAT_THIS_SEED", 0))
+seed_everything(BEAT_THIS_SEED, workers=True)
 
 
 def main():
@@ -38,7 +38,7 @@ def main():
     parser.add_argument("--n-layers", type=int, default=6)
     parser.add_argument("--total-dim", type=int, default=512)
     parser.add_argument(
-        "--input-dropout",
+        "--middle-dropout",
         type=float,
         default=0.2,
         help="dropout rate to apply between frontend and the main transformer blocks",
@@ -126,25 +126,22 @@ def main():
         help="Use online mask aumentation",
     )
     parser.add_argument(
-        "--test-mode", action="store_true", help="test mode to fast check the system"
-    )
-    parser.add_argument(
         "--length-based-oversampling-factor",
         type=float,
         default=0.65,
         help="The factor to oversample the long pieces in the dataset. Set to 0 to only take one excerpt for each piece.",
     )
     parser.add_argument(
-        "--train-datasets",
-        type=str,
-        default="None",
-        help="The datasets to train on. None for all datasets.",
+        "--val",
+        default=True,
+        action=argparse.BooleanOptionalAction,
+        help="Train on all data, including validation data, escluding test data. The validation metrics will still be computed, but they won't carry any meaning.",
     )
     parser.add_argument(
-        "--val-datasets",
-        type=str,
-        default="None",
-        help="The datasets to validate on. None for all datasets, and empty string for no validation.",
+        "--hung-data",
+        default=False,
+        action=argparse.BooleanOptionalAction,
+        help="Limit the training to Hung et al. data. The validation will still be computed on all datasets.",
     )
     parser.add_argument(
         "--fold",
@@ -159,7 +156,7 @@ def main():
     print(args)
 
     if args.logger == "wandb":
-        name = f"BTr-{args.loss}-lr{args.lr}-n{args.n_layers}-h{args.total_dim}-d{args.input_dropout},{args.frontend_dropout},{args.transformer_dropout}-bs{args.batch_size}x{args.accumulate_grad_batches}-aug{args.tempo_augmentation}{args.pitch_augmentation}{args.mask_augmentation}"
+        name = f"{args.loss}-lr{args.lr}-n{args.n_layers}-h{args.total_dim}-d{args.frontend_dropout},{args.middle_dropout},{args.transformer_dropout}-bs{args.batch_size}x{args.accumulate_grad_batches}-aug{args.tempo_augmentation}{args.pitch_augmentation}{args.mask_augmentation}{'noval' if not args.val else ''}{'hung' if args.hung_data else ''}{args.fold if args.fold is not None else ''}"
         logger = WandbLogger(project="JBT", entity="vocsep", name=name)
     else:
         logger = None
@@ -194,17 +191,10 @@ def main():
         spect_fps=args.fps,
         num_workers=args.num_workers,
         test_dataset="gtzan",
-        test_mode=args.test_mode,
         length_based_oversampling_factor=args.length_based_oversampling_factor,
         augmentations=augmentations,
-        train_datasets=(
-            args.train_datasets.split(
-                ",") if args.train_datasets != "None" else None
-        ),
-        val_datasets=(
-            args.val_datasets.split(
-                ",") if args.val_datasets != "None" else None
-        ),
+        hung_data=args.hung_data,
+        no_val=not args.val,
         fold=args.fold,
     )
     datamodule.setup()
@@ -214,7 +204,7 @@ def main():
         widen_target_mask=3
     )
     print("Using positive weights: ", pos_weights)
-    dropout = {"input" : args.input_dropout, "frontend": args.frontend_dropout,"transformer" : args.transformer_dropout}
+    dropout = {"middle" : args.middle_dropout, "frontend": args.frontend_dropout,"transformer" : args.transformer_dropout}
     pl_model = PLBeatThis(spect_dim=128, fps=50, total_dim=args.total_dim, ff_mult=4, n_layers=args.n_layers, stem_dim=32, dropout=dropout, lr=args.lr, weight_decay=args.weight_decay,
                           pos_weights=pos_weights, head_dim=32, loss_type=args.loss, warmup_steps=args.warmup_steps, max_epochs=args.max_epochs, use_dbn=args.dbn, eval_trim_beats=args.eval_trim_beats, predict_full_pieces=False)
     for part in args.compile:
