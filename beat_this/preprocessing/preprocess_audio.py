@@ -115,12 +115,12 @@ class SpectCreation():
                 assert sr == self.audio_sr, f"Sample rate mismatch: {sr} != {self.audio_sr}"
                 # compute the mel spectrogram
                 spect = self.spect_class(torch.tensor(
-                    waveform, dtype=torch.float32).unsqueeze(0)).squeeze(0)
+                    waveform, dtype=torch.float32).unsqueeze(0)).squeeze(0).T
                 # scale the values with log(1 + 1000 * x)
                 spect = torch.log1p(1000*spect)
                 # save the spectrogram as numpy array
                 spect_path.parent.mkdir(parents=True, exist_ok=True)
-                save_spectrogram(spect_path, spect.numpy().T)
+                save_spectrogram(spect_path, spect.numpy())
                 
             # save the length of the spectrogram
             spect_lens[filename_to_augmentation(audio_path.stem)["stretch"]] = spect.shape[0]

@@ -271,7 +271,7 @@ class BeatDataModule(pl.LightningDataModule):
             if self.hung_data:
                 # exclude the no hung datasets from the validation set before merging train and val
                 val_idx = val_idx[self.metadata_df["dataset"][val_idx].isin(hung_train_datasets)]
-            train_idx = np.concatenate([train_idx, val_idx])
+            train_idx = np.concatenate([train_idx, val_idx.copy()])
         if self.length_based_oversampling_factor:
             # oversample the training set according to the audio_length information, so that long pieces are more likely to be sampled
             old_len = len(train_idx)
