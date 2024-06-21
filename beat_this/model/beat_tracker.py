@@ -14,10 +14,27 @@ import beat_this.model.roformer as roformer
 
 
 class BeatThis(nn.Module):
+    """
+    A neural network model for beat tracking. It is compose of three main components:
+    - a frontend that processes the input spectrogram,
+    - a series of transformer blocks that process the output of the frontend,
+    - a head that produces the final beat and downbeat predictions.
+
+    Args:
+        spect_dim (int): The dimension of the input spectrogram (default: 128).
+        transformer_dim (int): The dimension of the main transformer blocks (default: 512).
+        ff_mult (int): The multiplier for the feed-forward dimension in the transformer blocks (default: 4).
+        n_layers (int): The number of transformer blocks (default: 6).
+        head_dim (int): The dimension of each attention head for the partial transformers in the frontend and the transformer blocks (default: 32).
+        stem_dim (int): The out dimension of the stem convolutional layer (default: 32).
+        dropout (dict): A dictionary specifying the dropout rates for different parts of the model
+            (default: {"frontend": 0.1, "middle": 0.2, "transformer": 0.2}).
+    """
+
     def __init__(
         self,
         spect_dim=128,
-        total_dim=512,
+        transformer_dim=512,
         ff_mult=4,
         n_layers=6,
         head_dim=32,
@@ -26,8 +43,8 @@ class BeatThis(nn.Module):
     ):
         super().__init__()
 
-        assert total_dim % head_dim == 0, "total_dim must be divisible by head_dim"
-        n_heads = total_dim // head_dim
+        assert transformer_dim % head_dim == 0, "transformer_dim must be divisible by head_dim"
+        n_heads = transformer_dim // head_dim
         rotary_embed = RotaryEmbedding(head_dim)
 
         self.middle_dropout = nn.Dropout(dropout["middle"])
@@ -70,16 +87,16 @@ class BeatThis(nn.Module):
             _dim = _dim * 2
         frontend_blocks = nn.Sequential(*frontend_blocks)
         concat = Rearrange("b c f t -> b t (c f)")
-        last_linear = nn.Linear(_dim*4, total_dim)
+        last_linear = nn.Linear(_dim*4, transformer_dim)
         self.frontend = nn.Sequential(
             stem, frontend_blocks, concat, last_linear)
 
         # create the transformer blocks
-        self.transformer_blocks = roformer.Transformer(dim=total_dim, depth=n_layers, heads=n_heads, attn_dropout=dropout["transformer"],
+        self.transformer_blocks = roformer.Transformer(dim=transformer_dim, depth=n_layers, heads=n_heads, attn_dropout=dropout["transformer"],
                                                        ff_dropout=dropout["transformer"], rotary_embed=rotary_embed, ff_mult=ff_mult, dim_head=head_dim, norm_output=True)
 
         # create the output heads
-        self.task_heads = SumHead(total_dim)
+        self.task_heads = SumHead(transformer_dim)
 
         # init all weights
         self.apply(self._init_weights)

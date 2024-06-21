@@ -25,7 +25,7 @@ class PLBeatThis(LightningModule):
         self,
         spect_dim = 128,
         fps = 50,
-        total_dim = 512,
+        transformer_dim = 512,
         ff_mult = 4,
         n_layers=6,
         stem_dim=32,
@@ -47,7 +47,7 @@ class PLBeatThis(LightningModule):
         self.weight_decay = weight_decay
         self.fps = fps
         # create model
-        self.model = BeatThis(spect_dim=spect_dim, total_dim=total_dim, ff_mult=ff_mult, stem_dim=stem_dim, n_layers=n_layers, head_dim=head_dim, dropout=dropout)
+        self.model = BeatThis(spect_dim=spect_dim, transformer_dim=transformer_dim, ff_mult=ff_mult, stem_dim=stem_dim, n_layers=n_layers, head_dim=head_dim, dropout=dropout)
         self.warmup_steps = warmup_steps
         self.max_epochs = max_epochs
         # set up the losses

@@ -36,11 +36,12 @@ def main():
         help="Which model parts to compile, among frontend, transformer_encoder, task_heads"
     )
     parser.add_argument("--n-layers", type=int, default=6)
-    parser.add_argument("--total-dim", type=int, default=512)
+    parser.add_argument("--transformer-dim", type=int, default=512)
     parser.add_argument(
         "--middle-dropout",
         type=float,
-        default=0.2,
+        # default=0.2,
+        default=0,
         help="dropout rate to apply between frontend and the main transformer blocks",
     )
     parser.add_argument(
@@ -60,7 +61,7 @@ def main():
     parser.add_argument(
         "--logger", type=str, choices=["wandb", "none"], default="none"
     )
-    parser.add_argument("--num-workers", type=int, default=20)
+    parser.add_argument("--num-workers", type=int, default=8)
     parser.add_argument("--n-heads", type=int, default=16)
     parser.add_argument("--fps", type=int, default=50,
                         help="The spectrograms fps.")
@@ -156,14 +157,13 @@ def main():
     print(args)
 
     if args.logger == "wandb":
-        name = f"{args.loss}-lr{args.lr}-n{args.n_layers}-h{args.total_dim}-d{args.frontend_dropout},{args.middle_dropout},{args.transformer_dropout}-bs{args.batch_size}x{args.accumulate_grad_batches}-aug{args.tempo_augmentation}{args.pitch_augmentation}{args.mask_augmentation}{'noval' if not args.val else ''}{'hung' if args.hung_data else ''}{args.fold if args.fold is not None else ''}"
+        name = f"{'noval ' if not args.val else ''}{'hung ' if args.hung_data else ''}{'fold' + str(args.fold) + ' ' if args.fold is not None else ''}{args.loss}-h{args.transformer_dim}-d{args.frontend_dropout},{args.middle_dropout},{args.transformer_dropout}-aug{args.tempo_augmentation}{args.pitch_augmentation}{args.mask_augmentation}"
         logger = WandbLogger(project="JBT", entity="vocsep", name=name)
     else:
         logger = None
 
     if args.force_flash_attention:
-        print("Forcing the use of the flash attention")
-        # set for flash attention
+        print("Forcing the use of the flash attention.")
         torch.backends.cuda.enable_flash_sdp(True)
         torch.backends.cuda.enable_mem_efficient_sdp(False)
         torch.backends.cuda.enable_math_sdp(False)
@@ -205,7 +205,7 @@ def main():
     )
     print("Using positive weights: ", pos_weights)
     dropout = {"middle" : args.middle_dropout, "frontend": args.frontend_dropout,"transformer" : args.transformer_dropout}
-    pl_model = PLBeatThis(spect_dim=128, fps=50, total_dim=args.total_dim, ff_mult=4, n_layers=args.n_layers, stem_dim=32, dropout=dropout, lr=args.lr, weight_decay=args.weight_decay,
+    pl_model = PLBeatThis(spect_dim=128, fps=50, transformer_dim=args.transformer_dim, ff_mult=4, n_layers=args.n_layers, stem_dim=32, dropout=dropout, lr=args.lr, weight_decay=args.weight_decay,
                           pos_weights=pos_weights, head_dim=32, loss_type=args.loss, warmup_steps=args.warmup_steps, max_epochs=args.max_epochs, use_dbn=args.dbn, eval_trim_beats=args.eval_trim_beats, predict_full_pieces=False)
     for part in args.compile:
         if hasattr(pl_model.model, part):

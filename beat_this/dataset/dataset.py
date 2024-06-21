@@ -180,10 +180,8 @@ class BeatDataModule(pl.LightningDataModule):
         num_workers (int, optional): The number of worker processes to use for data loading. Defaults to 20.
         augmentations (dict, optional): A dictionary of data augmentations to apply. Defaults to {"pitch": {"min": -5, "max": 6}, "time": {"min": -20, "max": 20, "stride": 4}}.
         test_dataset (str, optional): The name of the dataset to use for testing. Defaults to "gtzan".
-        train_datasets (list, optional): A list of dataset names to use for training. If None, a percentage of all datasets except the test_dataset is used. Defaults to None.
-        val_datasets (list, optional): A list of dataset names to use for validation. If None, a percentage of all datasets with downbeat information is used. 
-            If it is set to an empty string, all data are used for training, and no validation is performed; practically the validation still occur on the same training data,
-             to avoid exceptions. Defaults to None.
+        hung_data (bool, optional): If True, only use the datasets from the Hung et al. paper for training; validation is still on all datasets. Defaults to False.
+        no_val (bool, optional): If True, train on all train+val data and do not use a validation set; for compatibility reason, the validation metrics are still computed, but are not meaningful. Defaults to False.
         spect_fps (int, optional): The frames per second of the spectrograms. Defaults to 50.
         length_based_oversampling_factor (int, optional): The factor by which to oversample based on sequence length. Defaults to 0.
         fold (int, optional): The fold number for cross-validation. If None, the single split is used. Defaults to None.
@@ -209,7 +207,8 @@ class BeatDataModule(pl.LightningDataModule):
         self.metadata_df = self.metadata_df[self.metadata_df.dataset.isin(usable_datasets)].reset_index(drop=True)
         # find and load manual train/val splits
         if fold is not None:
-            self.manual_splits = {}
+            # use cross-validation splits
+            self.single_splits = {} # single splits are not used in this case
             for dataset in usable_datasets:
                 if dataset == test_dataset:
                     continue
@@ -217,15 +216,16 @@ class BeatDataModule(pl.LightningDataModule):
                 cv = pd.read_csv(next((annotation_dir / dataset).glob('*.folds')),
                                  sep='\t', names=['piece', 'fold'])
                 cv["split"] = cv["fold"].apply(lambda fold_idx: 'val' if fold_idx == fold else 'train')
-                self.manual_splits[dataset] = cv
+                self.single_splits[dataset] = cv
         else:
+            # use single splits
             for dataset in usable_datasets:
                 if not (annotation_dir / dataset / 'split.csv').exists() and dataset != test_dataset:
                     raise ValueError(f"Missing split file for dataset {dataset}. This need to be present in the beat_annotations folder.")
-            self.manual_splits = {dataset: pd.read_csv(annotation_dir / dataset / 'split.csv')
+            self.single_splits = {dataset: pd.read_csv(annotation_dir / dataset / 'split.csv')
                                 for dataset in usable_datasets
                                 if (annotation_dir / dataset / 'split.csv').exists()}
-            print("Manual splits loaded:", self.manual_splits.keys())
+            print("Manual splits loaded:", self.single_splits.keys())
         # remember remaining parameters
         self.batch_size = batch_size
         self.train_length = train_length
@@ -247,7 +247,7 @@ class BeatDataModule(pl.LightningDataModule):
         test_idx = self.metadata_df.index[self.metadata_df["dataset"] == self.test_dataset]
         train_idx = np.zeros(0, dtype=int)
         val_idx = np.zeros(0, dtype=int)
-        for dataset, split_df in self.manual_splits.items():
+        for dataset, split_df in self.single_splits.items():
             df_subset = self.metadata_df[self.metadata_df["dataset"] == dataset].copy()
             if df_subset.shape[0] != split_df.shape[0]:
                 raise ValueError(f"Dataset {dataset} has {df_subset.shape[0]} pieces, but split file has {split_df.shape[0]} pieces")
@@ -258,7 +258,6 @@ class BeatDataModule(pl.LightningDataModule):
             train_idx = np.concatenate([train_idx, split_data_df.index[split_data_df.split == "train"]])
             val_idx = np.concatenate([val_idx, split_data_df.index[split_data_df.split == "val"]])
         # # append train-only datasets
-        # train_idx = np.concatenate([train_idx, train_only_idx])
         # treat rwc as 3 different datasets with rwc_popular, rwc_jazz, rwc_classical, rwc_royalty-free. Necessary for literature-compatible dataset selection
         if "rwc" in self.metadata_df.dataset.unique():
             self.metadata_df.loc[self.metadata_df.dataset == "rwc", "dataset"] = self.metadata_df.loc[self.metadata_df.dataset == "rwc", "spect_folder"].apply(lambda p: "rwc_" + Path(p).name.split("_")[1])
@@ -437,17 +436,3 @@ def handle_datasets_mismatch(metadata_df):
         print("These datasets won't be used.")
     # return the datasets that are in both
     return set(metadata_df.dataset) & set(DATASET_INFO.keys())
-
-
-# test the dataset and datamodule
-if __name__ == "__main__":
-    data_dir = Path("/share/hel/home/francesco/beat_this/data")
-    datamodule = BeatDataModule(data_dir)
-    datamodule.setup()
-    for batch in datamodule.train_dataloader():
-        print(batch["spect"].shape)
-        print(batch["truth_beat"].shape)
-        print(batch["padding_mask"].shape)
-        break
-    print("Pos weights:")
-    print(datamodule.get_train_positive_weights())
