@@ -18,6 +18,7 @@ try:
 except ImportError:
     wandb = None
 from concurrent.futures import ThreadPoolExecutor
+from beat_this.dataset.dataset import split_piece
 
 
 class PLBeatThis(LightningModule):
@@ -167,68 +168,47 @@ class PLBeatThis(LightningModule):
         self.log_losses(losses, len(batch["spect"]), "test")
         self.log_metrics(metrics, batch["spect"].shape[0], "test")
 
-    # def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0, overlap: int = 0, overlaps: str = 'keep_first') -> Any:
-    #     """
-    #     Compute predictions and metrics for a batch (a dictionary with an "audio" key).
-    #     If self.predict_full_pieces is true-ish, will split up the audio into multiple excerpts.
-    #     Potential overlaps between excerpts can be handled by averaging them (overlaps='average'),
-    #     by keeping the predictions of the excerpt coming first (overlaps='keep_first'), or
-    #     by keeping the predictions of the excerpt coming last (overlaps='keep_last').
-    #     Note that overlaps appear even when overlap=0 as the last excerpt is moved backwards
-    #     when it would extend over the end of the piece.
-    #     """
-    #     if self.predict_full_pieces:
-    #         if batch["audio"].shape[0] != 1:
-    #             raise ValueError("When `predict_full_pieces` is True, only `batch_size=1` is supported")
-    #         if torch.any(~batch["padding_mask"]):
-    #             raise ValueError("When `predict_full_pieces` is True, the Dataset must not pad inputs")
-    #         frames_to_audio = (1 if self.input_enc[0].startswith('dac') else self.hop_size)
-    #         # split up the audio into chunks
-    #         audio = batch["audio"][0]
-    #         chunk_size = self.max_length * frames_to_audio
-    #         assert self.num_lost_frames % 2 == 0
-    #         border_size = self.num_lost_frames // 2 * frames_to_audio
-    #         chunks, starts = split_piece(audio, chunk_size, border_size, overlap=overlap, avoid_short_end=True)
-    #         # run the model
-    #         outputs = [self.module(chunk.unsqueeze(0)) for chunk in chunks]
-    #         # aggregate the predictions for the whole piece
-    #         if self.input_enc[0].startswith('dac'):
-    #             total_length = len(audio)
-    #         else:
-    #             total_length = (len(audio) + self.hop_size - 1) // self.hop_size
-    #         piece_prediction_beat = torch.full((total_length,), -1000., device=audio.device)
-    #         piece_prediction_downbeat = torch.full((total_length,), -1000., device=audio.device)
-    #         if overlaps == 'average':
-    #             number_of_predictions = torch.zeros(total_length, device=audio.device)
-    #         excerpts = zip(starts, outputs)
-    #         if overlaps == 'keep_first':
-    #             # process in reverse order, so predictions of earlier excerpts overwrite later ones
-    #             excerpts = reversed(list(excerpts))
-    #         for start, output in excerpts:
-    #             # add the predictions and take note of overlaps
-    #             start //= frames_to_audio
-    #             end = min(start + output["beat"].shape[1], total_length)
-    #             piece_prediction_beat[start:end] = output["beat"][0][:end - start]
-    #             piece_prediction_downbeat[start:end] = output["downbeat"][0][:end - start]
-    #             if overlaps == 'average':
-    #                 number_of_predictions[start:end] += 1
-    #         if overlaps == 'average':
-    #             # clamp the number of predictions to avoid division by zero. This should not be necessary, but it is
-    #             number_of_predictions = torch.clamp(number_of_predictions, min=1)
-    #             # normalize if multiple predictions at the same place
-    #             piece_prediction_beat = piece_prediction_beat / number_of_predictions
-    #             piece_prediction_downbeat = piece_prediction_downbeat / number_of_predictions
-    #         # save it to model_prediction
-    #         model_prediction = {}
-    #         model_prediction["beat"] = piece_prediction_beat.unsqueeze(0)
-    #         model_prediction["downbeat"] = piece_prediction_downbeat.unsqueeze(0)
-    #     else:
-    #         # run the model
-    #         model_prediction = self.module(batch["audio"], batch["padding_mask"])
+    def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0, chunk_size: int = 1500, overlap_mode: str = 'keep_first') -> Any:
+        """
+        Compute predictions and metrics for a batch (a dictionary with an "spect" key).
+        If self.predict_full_pieces==True, will split up the audio into multiple chunks of chunk size,
+         which should correspond to the length of the sequence the model was trained with.
+        Potential overlaps between chunks can be handled in two ways:
+        by keeping the predictions of the excerpt coming first (overlap_mode='keep_first'), or
+        by keeping the predictions of the excerpt coming last (overlap_mode='keep_last').
+        Note that overlaps appear as the last excerpt is moved backwards
+        when it would extend over the end of the piece.
+        """
+        if self.predict_full_pieces:
+            if batch["spect"].shape[0] != 1:
+                raise ValueError("When `predict_full_pieces` is True, only `batch_size=1` is supported")
+            if torch.any(~batch["padding_mask"]):
+                raise ValueError("When `predict_full_pieces` is True, the Dataset must not pad inputs")
+            # split up the spectrogram into chunks
+            spect = batch["spect"][0]
+            if hasattr(self.beat_loss,"spread_targets"): # discard the edges that are affected by the max-pooling in the loss
+                border_size = self.beat_loss.spread_targets
+            else:
+                border_size = 0
+            chunks, starts = split_piece(spect, chunk_size, border_size= border_size, avoid_short_end=True)
+            # run the model
+            pred_chunks = [self.model(chunk.unsqueeze(0)) for chunk in chunks]
+            # remove the extra dimension in beat and downbeat prediction due to batch size 1
+            pred_chunks = [{"beat": p["beat"][0], "downbeat": p["downbeat"][0]} for p in pred_chunks]
+            piece_prediction_beat, piece_prediction_downbeat = aggregate_prediction(pred_chunks, starts, spect.shape[0], chunk_size, border_size, overlap_mode, spect.device)
+            # save it to model_prediction
+            model_prediction = {}
+            model_prediction["beat"] = piece_prediction_beat.unsqueeze(0)
+            model_prediction["downbeat"] = piece_prediction_downbeat.unsqueeze(0)
+        else:
+            # run the model
+            model_prediction = self.model(batch["spect"])
 
-    #     shared_out, metrics = self._compute_metrics(batch, model_prediction, step="test")
-    #     metadata = dict(audio_path=batch["audio_path"])
-    #     return dict(ChainMap(shared_out, metrics, metadata))
+        # postprocess the predictions
+        model_prediction = self.postprocessor(model_prediction, batch["padding_mask"])
+        # compute the metrics
+        metrics, piecewise = self._compute_metrics(batch, model_prediction, step="test")
+        return metrics, piecewise
 
 
     def configure_optimizers(self):
@@ -249,6 +229,21 @@ class PLBeatThis(LightningModule):
         result = dict(optimizer=optimizer)
         result['lr_scheduler'] = {"scheduler": self.lr_scheduler, "interval": "step"}
         return result
+    
+    def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
+        # compiled models have _orig_mod in the state dict keys, remove it
+        for key in list(state_dict.keys()):  # use list to take a snapshot of the keys
+            if "._orig_mod" in key:
+                state_dict[key.replace("._orig_mod", "")] = state_dict.pop(key)
+        super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
+
+    def state_dict(self, *args, **kwargs):
+        state_dict = super().state_dict(*args, **kwargs)
+        # remove _orig_mod prefixes for compiled models
+        for key in list(state_dict.keys()):  # use list to take a snapshot of the keys
+            if "._orig_mod" in key:
+                state_dict[key.replace("._orig_mod", "")] = state_dict.pop(key)
+        return state_dict
 
 
 class Metrics:
@@ -299,3 +294,20 @@ class CosineWarmupScheduler(torch.optim.lr_scheduler._LRScheduler):
             lr_factor = self.raise_to * min(progress, 1)
         return lr_factor
 
+def aggregate_prediction(pred_chunks, starts, full_size, chunk_size, border_size, overlap_mode, device):
+    # cut the predictions to discard the border
+    pred_chunks = [{'beat': pchunk['beat'][border_size:-border_size], 'downbeat': pchunk['downbeat'][border_size:-border_size]} for pchunk in pred_chunks]
+    starts = [start + border_size for start in starts]
+    # assert all([chunk["beat"].shape[0] == chunk_size - 2*border_size for chunk in pred_chunks])
+    # assert all([chunk["downbeat"].shape[0] == chunk_size - 2*border_size for chunk in pred_chunks])
+    # aggregate the predictions for the whole piece
+    piece_prediction_beat = torch.full((full_size,), -1000., device=device)
+    piece_prediction_downbeat = torch.full((full_size,), -1000., device=device)
+    if overlap_mode == 'keep_first':
+        # process in reverse order, so predictions of earlier excerpts overwrite later ones
+        pred_chunks = reversed(list(pred_chunks))
+        starts = reversed(list(starts))
+    for start, pchunk in zip(starts, pred_chunks):
+        piece_prediction_beat[start:start + chunk_size - 2*border_size] = pchunk["beat"]
+        piece_prediction_downbeat[start:start + chunk_size - 2*border_size] = pchunk["downbeat"]
+    return piece_prediction_beat, piece_prediction_downbeat
