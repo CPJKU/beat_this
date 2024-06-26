@@ -93,11 +93,13 @@ class BeatTrackingDataset(Dataset):
         downbeat_mask = DATASET_INFO[df_row["dataset"]]["downbeat"]
         # select all values in columns that start with spect_len, e.g. spect_len_ts-20
         spect_lengths = {int(key.replace("spect_len_ts","")): int(value) for key, value in df_row.items() if key.startswith("spect_len")}
+        # take care of different subsections of rwc for the dataset name
+        dataset_name = df_row["dataset"] if df_row["dataset"] != "rwc" else "rwc_" + spect_folder.name.split("_")[1]
         return {'spect_folder': str(spect_folder),
                 'beat_time': beat_time,
                 'beat_value': beat_value,
                 'downbeat_mask': downbeat_mask,
-                'dataset': df_row['dataset'],
+                'dataset': dataset_name,
                 'spect_lengths': spect_lengths,
                 }
 
@@ -148,6 +150,7 @@ class BeatTrackingDataset(Dataset):
             # restructure the item dict with the correct training information
             item = {"spect": spect,
                     "spect_path": str(item["spect_path"]),
+                    "dataset" : item["dataset"],
                     "start_frame": start_frame,
                     "truth_beat": framewise_truth_beat,
                     "truth_downbeat": framewise_truth_downbeat,
@@ -397,29 +400,28 @@ def handle_datasets_mismatch(metadata_df):
     # return the datasets that are in both
     return set(metadata_df.dataset) & set(DATASET_INFO.keys())
 
-def split_piece(spect, chunk_size, border_size=6, avoid_short_end=True):
+def split_piece(spect : torch.Tensor, chunk_size : int, border_size : int=6, avoid_short_end : bool=True):
     """
     Split a tensor spectrogram matrix of shape (time x bins) into time chunks of `chunk_size` and return the chunks and starting positions.
     Consecutive chunks overlap by `border_size`, which is assumed to be discarded in the predictions, since the model
      is not really trained on this part due to the max-pool in the loss.
-    If `avoid_short_end` is true, the last chunk start is shifted left to ends at the end of the piece, therefore the last chunk can potentially overlap with previous chunks more than border_size, otherwise it will be padded.
-    """
-    # return the piece if it is shorter than the chunk size - 2 * border_size
-    if len(spect) < chunk_size - 2 * border_size:
-        return [spect], [0]
+    If `avoid_short_end` is true, the last chunk start is shifted left to ends at the end of the piece, therefore the last chunk can potentially overlap with previous chunks more than border_size, otherwise it will be a shorter segment.
+    If the piece is shorter than `chunk_size`, avoid_short_end is ignored and the piece is returned as a single shorter chunk.
 
-    # generate the start indices
+    Args:
+        spect (torch.Tensor): The input spectrogram tensor of shape (time x bins).
+        chunk_size (int): The size of the chunks to produce.
+        border_size (int, optional): The size of the border to overlap between chunks. Defaults to 6.
+        avoid_short_end (bool, optional): If True, the last chunk is shifted left to end at the end of the piece. Defaults to True.
+    """
+    # generate the start and end indices 
     starts = np.arange(-border_size, len(spect), chunk_size - border_size)
-    if avoid_short_end:
+    if avoid_short_end and len(spect) > chunk_size - border_size:
         # if we avoid short ends, move the last index to the end of the piece - (chunk_size - border_size)
         starts[-1] = len(spect) - (chunk_size - border_size)
     # generate the chunks
-    chunks = [spect[max(start,0):start + chunk_size] for start in starts]
-    # pad the first and last chunk in the time dimension
-    # first chunk padding is fixed to border size
+    chunks = [spect[max(start,0):min(start+chunk_size,len(spect))] for start in starts]
+    # pad the first and last chunk in the time dimension to account for the border
     chunks[0] = F.pad(chunks[0], (0, 0, border_size, 0), "constant", 0)
-    # last chunk padding is variable to have chunk_size
-    chunks[-1] = F.pad(chunks[-1], (0, 0, 0, chunk_size - len(chunks[-1])), "constant", 0)
-    for chunk in chunks:
-        assert chunk.shape[0] == chunk_size
+    chunks[-1] = F.pad(chunks[-1], (0, 0, 0, border_size), "constant", 0)
     return chunks, starts

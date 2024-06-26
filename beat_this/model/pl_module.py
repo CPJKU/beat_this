@@ -208,7 +208,7 @@ class PLBeatThis(LightningModule):
         model_prediction = self.postprocessor(model_prediction, batch["padding_mask"])
         # compute the metrics
         metrics, piecewise = self._compute_metrics(batch, model_prediction, step="test")
-        return metrics, piecewise
+        return metrics, piecewise, model_prediction, batch["dataset"], batch["spect_path"]
 
 
     def configure_optimizers(self):

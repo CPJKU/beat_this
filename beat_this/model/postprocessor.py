@@ -75,6 +75,10 @@ class Postprocessor:
         # convert from frame to seconds
         beat_time = (beat_frame / self.fps).cpu().numpy()
         downbeat_time = (downbeat_frame / self.fps).cpu().numpy()
+        # move the downbeat to the nearest beat
+        for i, d_time in enumerate(downbeat_time):
+            beat_idx = np.argmin(np.abs(beat_time - d_time))
+            downbeat_time[i] = beat_time[beat_idx]
         return beat_time, downbeat_time
 
     def postp_dbn(self, beat, downbeat, padding_mask):
