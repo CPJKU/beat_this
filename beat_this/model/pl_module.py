@@ -184,22 +184,13 @@ class PLBeatThis(LightningModule):
                 raise ValueError("When `predict_full_pieces` is True, only `batch_size=1` is supported")
             if torch.any(~batch["padding_mask"]):
                 raise ValueError("When `predict_full_pieces` is True, the Dataset must not pad inputs")
-            # split up the spectrogram into chunks
-            spect = batch["spect"][0]
+            # compute border size according to the loss type
             if hasattr(self.beat_loss,"spread_targets"): # discard the edges that are affected by the max-pooling in the loss
                 border_size = self.beat_loss.spread_targets
             else:
                 border_size = 0
-            chunks, starts = split_piece(spect, chunk_size, border_size= border_size, avoid_short_end=True)
-            # run the model
-            pred_chunks = [self.model(chunk.unsqueeze(0)) for chunk in chunks]
-            # remove the extra dimension in beat and downbeat prediction due to batch size 1
-            pred_chunks = [{"beat": p["beat"][0], "downbeat": p["downbeat"][0]} for p in pred_chunks]
-            piece_prediction_beat, piece_prediction_downbeat = aggregate_prediction(pred_chunks, starts, spect.shape[0], chunk_size, border_size, overlap_mode, spect.device)
-            # save it to model_prediction
-            model_prediction = {}
-            model_prediction["beat"] = piece_prediction_beat.unsqueeze(0)
-            model_prediction["downbeat"] = piece_prediction_downbeat.unsqueeze(0)
+            model_prediction = split_predict_aggregate(batch["spect"][0], chunk_size, border_size, overlap_mode, self.model)
+            
         else:
             # run the model
             model_prediction = self.model(batch["spect"])
@@ -311,3 +302,32 @@ def aggregate_prediction(pred_chunks, starts, full_size, chunk_size, border_size
         piece_prediction_beat[start:start + chunk_size - 2*border_size] = pchunk["beat"]
         piece_prediction_downbeat[start:start + chunk_size - 2*border_size] = pchunk["downbeat"]
     return piece_prediction_beat, piece_prediction_downbeat
+
+
+def split_predict_aggregate(spect: torch.Tensor, chunk_size: int, border_size: int, overlap_mode: str, model: torch.nn.Module):
+    """
+    Function for pieces that are longer than the training length of the model.
+    Split the input piece into chunks, run the model on them, and aggregate the predictions.
+
+    Args:
+        spect (torch.Tensor): the input piece
+        chunk_size (int): the length of the chunks
+        border_size (int): the size of the border that is discarded from the predictions
+        overlap_mode (str): how to handle overlaps between chunks
+        model (torch.nn.Module): the model to run
+
+    Returns:
+        dict: the model predictions
+    """
+    # split the piece into chunks
+    chunks, starts = split_piece(spect, chunk_size, border_size= border_size, avoid_short_end=True)
+    # run the model
+    pred_chunks = [model(chunk.unsqueeze(0)) for chunk in chunks]
+    # remove the extra dimension in beat and downbeat prediction due to batch size 1
+    pred_chunks = [{"beat": p["beat"][0], "downbeat": p["downbeat"][0]} for p in pred_chunks]
+    piece_prediction_beat, piece_prediction_downbeat = aggregate_prediction(pred_chunks, starts, spect.shape[0], chunk_size, border_size, overlap_mode, spect.device)
+    # save it to model_prediction
+    model_prediction = {}
+    model_prediction["beat"] = piece_prediction_beat.unsqueeze(0)
+    model_prediction["downbeat"] = piece_prediction_downbeat.unsqueeze(0)
+    return model_prediction

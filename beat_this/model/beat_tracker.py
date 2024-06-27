@@ -123,6 +123,26 @@ class BeatThis(nn.Module):
         x = self.transformer_blocks(x)
         x = self.task_heads(x)
         return x
+    
+    def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
+        # compiled models have _orig_mod in the state dict keys, remove it
+        for key in list(state_dict.keys()):  # use list to take a snapshot of the keys
+            if "._orig_mod" in key:
+                state_dict[key.replace("._orig_mod", "")] = state_dict.pop(key)
+        # allow loading from the PLBeatThis lightning checkpoint
+        for key in list(state_dict.keys()):  # use list to take a snapshot of the keys
+            if "model." in key:
+                state_dict[key.replace("model.", "")] = state_dict.pop(key)
+        super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
+
+    def state_dict(self, *args, **kwargs):
+        state_dict = super().state_dict(*args, **kwargs)
+        # remove _orig_mod prefixes for compiled models
+        for key in list(state_dict.keys()):  # use list to take a snapshot of the keys
+            if "._orig_mod" in key:
+                state_dict[key.replace("._orig_mod", "")] = state_dict.pop(key)
+        return state_dict
+
 
 
 class PartialRoformer(nn.Module):

@@ -1,246 +1,109 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Computes predictions for a given model and dataset, prints metrics, and
-optionally dumps predictions to a given file.
-For usage information, call with --help.
-"""
-
-from pytorch_lightning import Trainer, seed_everything
-import torch
-import numpy as np
-import argparse
+from beat_this.preprocessing.preprocess_audio import load_audio
+from beat_this.model.beat_tracker import BeatThis
+from beat_this.model.pl_module import split_predict_aggregate
+from beat_this.model.postprocessor import Postprocessor
+import os
+import librosa
 from pathlib import Path
 
-import pandas as pd
+import torchaudio
+import numpy as np
+import argparse
+import torch
 
-from beat_this.dataset.dataset import BeatDataModule
-from beat_this.model.pl_module import PLBeatThis
+# this is necessary to avoid a bug which cause pytorch to not see any GPU in some systems
+os.environ['CUDA_VISIBLE_DEVICES']='0'
 
-# for repeatability
-seed_everything(0, workers=True)
+def main(audio_path, modelfile, dbn, outpath,  gpu):
+    device = torch.device("cuda:" + str(gpu) if gpu >= 0 else "cpu")
+
+    # Load the audio and convert to spectrogram
+    waveform, audio_sr = load_audio(audio_path)
+    if audio_sr != 22050: # resample to 22050 if necessary
+        waveform = librosa.resample(waveform, orig_sr=audio_sr, target_sr=22050)
+    if waveform.ndim != 1: # if stereo, convert to mono
+        waveform = np.mean(waveform, axis=1)
+    waveform = torch.tensor(waveform, dtype=torch.float32, device=device)
+    mel_args = dict(n_fft=1024, hop_length=441, f_min=30, f_max=11000,
+                    n_mels=128, mel_scale='slaney', normalized='frame_length', power=1)
+    spect_class = torchaudio.transforms.MelSpectrogram(
+            sample_rate=22050, **mel_args).to(device)
+    spect = spect_class(waveform.unsqueeze(0)).squeeze(0).T
+    # scale the values with log(1 + 1000 * x)
+    spect = torch.log1p(1000*spect)
+
+    # Load the model
+    model = BeatThis()
+    checkpoint = torch.load(modelfile, map_location="cpu")
+    model.load_state_dict(checkpoint['state_dict'])
+    model.to(device)
+
+    # Predict the beats and downbeats
+    model.eval()
+    with torch.no_grad():
+        model_prediction = split_predict_aggregate(spect=spect, chunk_size=1500, overlap_mode="keep_first", border_size=6, model=model)
+    # postprocess the predictions
+    postprocessor = Postprocessor(type="dbn" if dbn else "minimal", fps=50)
+    model_prediction = postprocessor(model_prediction)
+    save_beat_csv(model_prediction["postp_beat"][0], model_prediction["postp_downbeat"][0], outpath)
+
+    
 
 
-def main():
+def save_beat_csv(beats,downbeats, outpath):
+    Path(outpath).parent.mkdir(parents=True, exist_ok=True)
+
+    # handle pickup measure, by considering the beat number of the first full measure
+    # find the number of beats between the first two downbeats
+    if len(downbeats) > 2:
+        beat_in_first_measure = beats[(beats < downbeats[1]) & (beats >= downbeats[0])].shape[0]
+        # find the number of pickup beats
+        pickup_beats = beats[beats < downbeats[0]].shape[0]
+        if pickup_beats < beat_in_first_measure:
+            start_counter = beat_in_first_measure - pickup_beats
+        else: 
+            print("WARNING: There are more pickup beats than beats in the first measure. This should not happen. The pickup measure will be considered as a normal measure.")
+            pickup_beats = 0
+            beat_in_first_measure = 0
+            counter = 0
+    else:
+        print("WARNING: There are less than two downbeats in the predictions. Something may be wrong. No pickup measure will be considered.")
+        start_counter = 0
+
+    
+    counter = start_counter
+    # write the beat file
+    with open(outpath, "w") as f:
+        for beat in beats:
+            if beat in downbeats:
+                counter = 1
+            else:
+                counter += 1
+            f.write(str(beat) + "\t" + str(counter) + "\n")
+
+
+
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Computes predictions for a given model and dataset, "
-        "prints metrics, and optionally dumps predictions to a given file.")
-    parser.add_argument("--models", type=str,
-                        nargs='+',
+        description="Computes predictions for a given model and a given audio file.")
+    parser.add_argument("--audio-path", type=str,
+                        required=True,
+                        help="Path to the audio file to process")
+    parser.add_argument("--model", type=str,
                         required=True,
                         help="Local checkpoint files to use")
-    parser.add_argument("--output_type", type=str, default="dict", choices=("dict", "beat"),
-                        help="output type: dict or .beat files (default: %(default)s)")
-    parser.add_argument("--predict_datasplit", type=str,
-                        choices=("train", "val", "test"),
-                        default="val",
-                        help="data split to use: train, val or test "
-                        "(default: %(default)s)")
-    parser.add_argument("--gpu", type=int, default=0)
-    parser.add_argument("--num_workers", type=int, default=8,
-                        help="number of data loading workers ")
-    parser.add_argument("--eval_trim_beats", metavar="SECONDS",
-                        type=float, default=None,
-                        help="Override whether to skip the first given seconds "
-                        "per piece in evaluating (default: as stored in model)")
+    parser.add_argument("--output_path", type=str,
+                        default="test_output.beat",
+                        help="where to save the .beat file containing beat and downbeat predictions")
+    parser.add_argument("--gpu", type=int, default=0,
+                        help="which gpu to use, if any. -1 for cpu. Default is 0.")
     parser.add_argument(
         "--dbn",
-        default=None,
-        action=argparse.BooleanOptionalAction,
-        help="override the option to use madmom postprocessing dbn",
-    )
-    parser.add_argument(
-        "--full_piece_prediction",
         default=False,
         action=argparse.BooleanOptionalAction,
-        help="Predict on full pieces instead of 1500 frames (~30s) segments",
-    )
-    parser.add_argument(
-        "--aggregation-type",
-        type=str,
-        choices=("mean-std", "K-fold"),
-        default="mean-std",
-        help="Type of aggregation to use for multiple models; ignored if only one model is given",
+        help="override the option to use madmom postprocessing dbn",
     )
 
     args = parser.parse_args()
 
-    # split the models in multiple single model
-    if Path(args.models[0]).is_file():
-        modelfiles = args.models
-    else:
-        # infer the path from the run id
-        modelfiles = []
-        for id in args.models:
-            folder = Path("JBT", id, "checkpoints")
-            potential_ckpts = list(folder.glob("*.ckpt"))
-            if len(potential_ckpts) != 1:
-                raise ValueError(
-                    f"Expected one .ckpt file in {folder}, found {len(potential_ckpts)}")
-            modelfiles.append(potential_ckpts[0])
-
-    print("Loading models", modelfiles)
-
-    if len(modelfiles) == 1:
-        # single model prediction
-        modelfile = modelfiles[0]
-        # create datamodule
-        datamodule = datamodule_setup(args, modelfile)
-        predict_dataloader = getattr(
-            datamodule, f'{args.predict_datasplit}_dataloader')()
-        # create model and trainer
-        model, trainer = model_setup(args, modelfile)
-        # predict
-        metrics, dataset, preds, piece = compute_predictions(
-            model, trainer, predict_dataloader)
-
-        # compute averaged metrics
-        averaged_metrics = {k: np.mean(v) for k, v in metrics.items()}
-        # compute metrics averaged by dataset
-        dataset_metrics = {k: {d: np.mean(v[dataset == d]) for d in np.unique(
-            dataset)} for k, v in metrics.items()}
-        # create a dataframe with the dataset_metrics
-        dataset_metrics_df = pd.DataFrame(dataset_metrics)
-        # print for dataset
-        print("Metrics")
-        for k, v in averaged_metrics.items():
-            print(f"{k}: {v}")
-        print("Dataset metrics")
-        for k, v in dataset_metrics.items():
-            print(k)
-            for d, value in v.items():
-                print(f"{d}: {value}")
-            print("------")
-    else:  # multiple models
-        if args.aggregation_type == "mean-std":
-            # computing result variability for the same dataset and different model seeds
-            # create datamodule only once, as we assume it is the same for all models
-            datamodule = datamodule_setup(args, modelfiles[0])
-            predict_dataloader = getattr(
-                datamodule, f'{args.predict_datasplit}_dataloader')()
-            # create model and trainer
-            models = []
-            trainers = []
-            for modelfile in modelfiles:
-                model, trainer = model_setup(args, modelfile)
-                models.append(model)
-                trainers.append(trainer)
-            # predict
-            all_metrics = []
-            for model, trainer in zip(models, trainers):
-                metrics, dataset, preds, piece = compute_predictions(
-                    model, trainer, predict_dataloader)
-                # compute averaged metrics for one model
-                averaged_metrics = {k: np.mean(v) for k, v in metrics.items()}
-                all_metrics.append(averaged_metrics)
-            # compute mean and standard deviations for all model averages
-            all_metrics_mean = {k: np.mean(
-                [m[k] for m in all_metrics]) for k in all_metrics[0]}
-            all_metrics_std = {
-                k: np.std([m[k] for m in all_metrics]) for k in all_metrics[0]}
-            all_metrics_stats = {
-                k: (all_metrics_mean[k], all_metrics_std[k]) for k, v in all_metrics[0].items()}
-            # print all metrics
-            print("Metrics")
-            for k, v in all_metrics_stats.items():
-                print(f"{k}: {v[0]} +- {v[1]}")
-        elif args.aggregation_type == "k-fold":
-            # computing results in the K-fold setting. Every fold has a different dataset
-            all_piece_metrics = []
-            all_piece_dataset = []
-            all_piece = []
-            # create datamodule for each model
-            for i_model, modelfile in enumerate(modelfiles):
-                print(f"Model {i_model+1}/{len(modelfiles)}")
-                datamodule = datamodule_setup(args, modelfile)
-                predict_dataloader = getattr(
-                    datamodule, f'{args.predict_datasplit}_dataloader')()
-                # create model and trainer
-                model, trainer = model_setup(args, modelfile)
-                # predict
-                metrics, dataset, preds, piece = compute_predictions(
-                    model, trainer, predict_dataloader)
-                all_piece_metrics.append(metrics)
-                all_piece_dataset.append(dataset)
-                all_piece.append(piece)
-            # aggregate across folds
-            all_piece_metrics = {k: np.concatenate(
-                [m[k] for m in all_piece_metrics]) for k in all_piece_metrics[0]}
-            all_piece_dataset = np.concatenate(all_piece_dataset)
-            all_piece = np.concatenate(all_piece)
-            # double check that there are no errors in the fold and there are not repeated pieces
-            assert len(all_piece) == len(np.unique(all_piece)
-                                         ), "There are repeated pieces in the folds"
-            dataset_metrics = {k: {d: np.mean(v[all_piece_dataset == d]) for d in np.unique(
-                all_piece_dataset)} for k, v in all_piece_metrics.items()}
-            # create a dataframe with the dataset_metrics
-            dataset_metrics_df = pd.DataFrame(dataset_metrics)
-            # print for dataset
-            print("Dataset metrics")
-            for k, v in dataset_metrics.items():
-                print(k)
-                for d, value in v.items():
-                    print(f"{d}: {value}")
-                print("------")
-        else:
-            raise ValueError(
-                f"Unknown aggregation type {args.aggregation_type}")
-
-
-def datamodule_setup(args, modelfile):
-    # Load the datamodule
-    print("Creating datamodule")
-    data_dir = Path(__file__).parent.parent.relative_to(Path.cwd()) / 'data'
-    datamodule_hparams = torch.load(modelfile, map_location='cpu')[
-        'datamodule_hyper_parameters']
-    # update the hparams with the ones from the arguments, or the one required for full piece prediction
-    datamodule_hparams.update(
-        data_dir=data_dir,
-        length_based_oversampling_factor=0,
-        augmentations={},
-        batch_size=1,)
-    if args.num_workers is not None:
-        datamodule_hparams["num_workers"] = args.num_workers
-    if args.full_piece_prediction:
-        datamodule_hparams['train_length'] = None
-    datamodule = BeatDataModule(**datamodule_hparams)
-    datamodule.setup(stage='test' if args.predict_datasplit ==
-                     'test' else 'fit')
-    return datamodule
-
-
-def model_setup(args, modelfile):
-    model_hparams = {}
-    if args.eval_trim_beats is not None:
-        model_hparams['eval_trim_beats'] = args.eval_trim_beats
-    if args.dbn is not None:
-        model_hparams['use_dbn'] = args.dbn
-    if args.full_piece_prediction:
-        model_hparams['predict_full_pieces'] = True
-
-    model = PLBeatThis.load_from_checkpoint(modelfile, map_location='cpu',
-                                            **model_hparams)
-    trainer = Trainer(
-        accelerator="auto",
-        devices=[args.gpu],
-        logger=None,
-        deterministic=True,
-        precision='16-mixed',
-    )
-    return model, trainer
-
-
-def compute_predictions(model, trainer, dataloader):
-    print("Computing predictions ...")
-    out = trainer.predict(model, dataloader)
-    metrics = [o[0] for o in out]
-    preds = [o[2] for o in out]
-    dataset = np.asarray([o[3][0] for o in out])
-    piece = np.asarray([o[4][0] for o in out])
-    # convert metrics from list of per-batch dictionaries to a single dictionary with np arrays as values
-    metrics = {k: np.asarray([m[k] for m in metrics]) for k in metrics[0]}
-    return metrics, dataset, preds, piece
-
-
-if __name__ == "__main__":
-    main()
+    main(args.audio_path, args.model, args.dbn, args.output_path,  args.gpu)

@@ -105,7 +105,14 @@ def number_of_precomputed_augmentations(augmentations):
 
 
 def precomputed_augmentation_filenames(augmentations, ext="npy"):
-    """Return the filenames of the precomputed augmentations."""
+    """Return the filenames of the precomputed augmentations.
+    
+    Parameters:
+    augmentations: dict
+        A dictionary containing the augmentations to be applied. It can contain either or both of the following keys:
+        - 'pitch': A dictionary with 'min' and 'max' keys specifying the range (including boundaries) of pitch shifting in semitones.
+        - 'tempo': A dictionary with 'min' and 'max' keys specifying the range (including boundaries) of time stretching factors; and a 'stride' key specifying the step size.
+    """
     filenames = [f"track_ps0.{ext}"]
     for method, params in augmentations.items():
         if method == 'pitch':

@@ -2,10 +2,7 @@ import torch
 import numpy as np
 from einops import pack, unpack, rearrange
 import torch.nn.functional as F
-try:
-    from madmom.features.downbeats import DBNDownBeatTrackingProcessor
-except:
-    DBNDownBeatTrackingProcessor = None
+from madmom.features.downbeats import DBNDownBeatTrackingProcessor
 from concurrent.futures import ThreadPoolExecutor
 
 class Postprocessor:
@@ -27,7 +24,9 @@ class Postprocessor:
         if type == "dbn":
             self.dbn = DBNDownBeatTrackingProcessor(beats_per_bar=[3, 4], min_bpm=55.0, max_bpm=215.0, fps=self.fps, transition_lambda=100, )
     
-    def __call__(self, model_prediction, padding_mask):
+    def __call__(self, model_prediction, padding_mask=None):
+        if padding_mask is None:
+            padding_mask = torch.ones_like(model_prediction["beat"], dtype=torch.bool)
         beat = model_prediction["beat"]
         downbeat = model_prediction["downbeat"]
         if self.type == "minimal":
@@ -69,16 +68,16 @@ class Postprocessor:
         beat_frame = torch.nonzero(beat_peaks)
         downbeat_frame = torch.nonzero(downbeat_peaks)
         # remove adjacent peaks 
-        # TODO: check that width=1 is what we want
         beat_frame = torch.tensor(deduplicate_peaks(beat_frame, width=1))
         downbeat_frame = torch.tensor(deduplicate_peaks(downbeat_frame, width=1))
         # convert from frame to seconds
         beat_time = (beat_frame / self.fps).cpu().numpy()
         downbeat_time = (downbeat_frame / self.fps).cpu().numpy()
         # move the downbeat to the nearest beat
-        for i, d_time in enumerate(downbeat_time):
-            beat_idx = np.argmin(np.abs(beat_time - d_time))
-            downbeat_time[i] = beat_time[beat_idx]
+        if len(beat_time) > 0: # skip if there are no beats, like in the first training steps
+            for i, d_time in enumerate(downbeat_time):
+                beat_idx = np.argmin(np.abs(beat_time - d_time))
+                downbeat_time[i] = beat_time[beat_idx]
         return beat_time, downbeat_time
 
     def postp_dbn(self, beat, downbeat, padding_mask):

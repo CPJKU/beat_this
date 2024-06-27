@@ -49,12 +49,6 @@ def save_spectrogram(path, spectrogram):
         raise
 
 
-def get_wav_length(filename):
-    """Returns length of a wav file in samples."""
-    with open(filename, 'rb') as f:
-        return wave.open(f, 'r').getnframes()
-
-
 class SpectCreation():
     def __init__(self, pitch_shift, time_stretch, audio_sr, mel_args):
         super(SpectCreation, self).__init__()
@@ -68,7 +62,12 @@ class SpectCreation():
         # create the mel spectrogram class
         self.spect_class = torchaudio.transforms.MelSpectrogram(
             sample_rate=audio_sr, **mel_args)
-        self.augmentations = {"pitch": {"min": pitch_shift[0], "max": pitch_shift[1]}, "tempo": { "min": -time_stretch[0], "max": time_stretch[0]+1, "stride": time_stretch[1]}}
+        # define the augmentations
+        self.augmentations = {}
+        if pitch_shift is not None:
+            self.augmentations["pitch"] = {"min": pitch_shift[0], "max": pitch_shift[1]}
+        if time_stretch is not None:
+            self.augmentations["tempo"] = {"min": -time_stretch[0], "max": time_stretch[0], "stride": time_stretch[1]}
         # compute the names to consider according to the augmentations
         self.filenames = precomputed_augmentation_filenames(self.augmentations, "wav")
 
