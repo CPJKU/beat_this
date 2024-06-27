@@ -11,19 +11,23 @@ import numpy as np
 import argparse
 import torch
 
-# this is necessary to avoid a bug which cause pytorch to not see any GPU in some systems
-os.environ['CUDA_VISIBLE_DEVICES']='0'
 
 def main(audio_path, modelfile, dbn, outpath,  gpu):
-    device = torch.device("cuda:" + str(gpu) if gpu >= 0 else "cpu")
+    if gpu >= 0:
+        os.environ['CUDA_VISIBLE_DEVICES']=str(gpu) # this is necessary to avoid a bug which causes pytorch to not see any GPU in some systems
+        device = torch.device("cuda:0")
+    else:
+        device = torch.device("cpu")
 
     # Load the audio and convert to spectrogram
+    print("Loading audio...")
     waveform, audio_sr = load_audio(audio_path)
-    if audio_sr != 22050: # resample to 22050 if necessary
-        waveform = librosa.resample(waveform, orig_sr=audio_sr, target_sr=22050)
     if waveform.ndim != 1: # if stereo, convert to mono
         waveform = np.mean(waveform, axis=1)
+    if audio_sr != 22050: # resample to 22050 if necessary
+        waveform = librosa.resample(waveform, orig_sr=audio_sr, target_sr=22050)
     waveform = torch.tensor(waveform, dtype=torch.float32, device=device)
+    print("Computing spectrogram...")
     mel_args = dict(n_fft=1024, hop_length=441, f_min=30, f_max=11000,
                     n_mels=128, mel_scale='slaney', normalized='frame_length', power=1)
     spect_class = torchaudio.transforms.MelSpectrogram(
@@ -33,19 +37,23 @@ def main(audio_path, modelfile, dbn, outpath,  gpu):
     spect = torch.log1p(1000*spect)
 
     # Load the model
+    print("Loading model...")
     model = BeatThis()
     checkpoint = torch.load(modelfile, map_location="cpu")
     model.load_state_dict(checkpoint['state_dict'])
     model.to(device)
 
     # Predict the beats and downbeats
+    print("Predicting beats and downbeats...")
     model.eval()
     with torch.no_grad():
         model_prediction = split_predict_aggregate(spect=spect, chunk_size=1500, overlap_mode="keep_first", border_size=6, model=model)
     # postprocess the predictions
     postprocessor = Postprocessor(type="dbn" if dbn else "minimal", fps=50)
     model_prediction = postprocessor(model_prediction)
+    print("Saving predictions...")
     save_beat_csv(model_prediction["postp_beat"][0], model_prediction["postp_downbeat"][0], outpath)
+    print(f"Done, saved in {outpath}")
 
     
 

@@ -1,7 +1,12 @@
 code/__pycache__/*
 data/annotations
 data/preprocessed/mono_tracks
+data/preprocessed/mono_tracks_old
+data/preprocessed/mono_tracks_old2
 data/preprocessed/spectrograms
+data/preprocessed/spectrograms_old
+data/preprocessed/spectrograms_old2
+data/preprocessed/spectrograms_old3
 data/outputs
 data/audio_paths.csv
 
