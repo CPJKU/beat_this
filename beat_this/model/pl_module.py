@@ -288,7 +288,6 @@ class CosineWarmupScheduler(torch.optim.lr_scheduler._LRScheduler):
 def aggregate_prediction(pred_chunks, starts, full_size, chunk_size, border_size, overlap_mode, device):
     # cut the predictions to discard the border
     pred_chunks = [{'beat': pchunk['beat'][border_size:-border_size], 'downbeat': pchunk['downbeat'][border_size:-border_size]} for pchunk in pred_chunks]
-    starts = [start + border_size for start in starts]
     # assert all([chunk["beat"].shape[0] == chunk_size - 2*border_size for chunk in pred_chunks])
     # assert all([chunk["downbeat"].shape[0] == chunk_size - 2*border_size for chunk in pred_chunks])
     # aggregate the predictions for the whole piece
@@ -299,8 +298,8 @@ def aggregate_prediction(pred_chunks, starts, full_size, chunk_size, border_size
         pred_chunks = reversed(list(pred_chunks))
         starts = reversed(list(starts))
     for start, pchunk in zip(starts, pred_chunks):
-        piece_prediction_beat[start:start + chunk_size - 2*border_size] = pchunk["beat"]
-        piece_prediction_downbeat[start:start + chunk_size - 2*border_size] = pchunk["downbeat"]
+        piece_prediction_beat[start + border_size:start + chunk_size - border_size] = pchunk["beat"]
+        piece_prediction_downbeat[start + border_size:start + chunk_size - border_size] = pchunk["downbeat"]
     return piece_prediction_beat, piece_prediction_downbeat
 
 

@@ -415,9 +415,9 @@ def split_piece(spect : torch.Tensor, chunk_size : int, border_size : int=6, avo
         avoid_short_end (bool, optional): If True, the last chunk is shifted left to end at the end of the piece. Defaults to True.
     """
     # generate the start and end indices 
-    starts = np.arange(-border_size, len(spect), chunk_size - border_size)
+    starts = np.arange(-border_size, len(spect), chunk_size - 2 * border_size)
     if avoid_short_end and len(spect) > chunk_size - border_size:
-        # if we avoid short ends, move the last index to the end of the piece - (chunk_size - border_size)
+        # if we avoid short ends, move the last index to the end of the piece - (chunk_size - 2 *border_size)
         starts[-1] = len(spect) - (chunk_size - border_size)
     # generate the chunks
     chunks = [spect[max(start,0):min(start+chunk_size,len(spect))] for start in starts]
