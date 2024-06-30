@@ -5,16 +5,36 @@ import librosa
 import numpy as np
 import os
 import pandas as pd
-import argparse
+import madmom
 from pedalboard import time_stretch, Pedalboard, PitchShift
 import concurrent.futures
 from git import Repo
 import torchaudio
 import torch
-from beat_this.utils import filename_to_augmentation, load_audio, save_audio
+from beat_this.utils import filename_to_augmentation
 from beat_this.dataset.augment import precomputed_augmentation_filenames
 
 BASEPATH = Path(__file__).parent.parent.relative_to(Path.cwd())
+
+def load_audio(path):
+    try:
+        return sf.read(path, dtype='float64')
+    except Exception:
+        # some files are not readable by soundfile, try madmom
+        return madmom.io.load_audio_file(str(path), dtype="float64")
+
+
+def save_audio(path, waveform, samplerate, resample_from=None):
+    if resample_from and resample_from != samplerate:
+        waveform = librosa.resample(waveform,
+                                    orig_sr=resample_from,
+                                    target_sr=samplerate)
+    try:
+        waveform = np.asarray(waveform, dtype=np.float64)
+        sf.write(path, waveform, samplerate=samplerate)
+    except KeyboardInterrupt:
+        path.unlink()  # avoid half-written files
+        raise
 
 def save_spectrogram(path, spectrogram):
     try:
@@ -26,6 +46,18 @@ def save_spectrogram(path, spectrogram):
 
 class SpectCreation():
     def __init__(self, pitch_shift, time_stretch, audio_sr, mel_args, verbose=False):
+        """
+        Initialize the SpectCreation class. This assume that the audio files have been preprocessed with all the requested augmentations and are stored in the `mono_tracks` directory with the proper naming defined in AudioPreprocessing.
+
+        Args:
+            pitch_shift (tuple or None): A tuple specifying the minimum and maximum (inclusive) pitch shift values considered from the available audio files.
+                                        If None, pitch shifting augmentation files will not be considered.
+            time_stretch (tuple or None): A tuple specifying the min/max and stride percentage to consider from the available audio files.
+                                        If None, time stretching augmentation files will not be considered.
+            audio_sr (int): The sample rate of the audio.
+            mel_args (dict): A dictionary of arguments to be passed to the MelSpectrogram class.
+            verbose (bool, optional): Whether to print verbose information. Defaults to False.
+        """
         super(SpectCreation, self).__init__()
         # define the directories
         self.preprocessed_dir = BASEPATH / 'data' / 'preprocessed'
@@ -74,6 +106,21 @@ class SpectCreation():
         print(f"Created {len(df)} spectrograms in {self.spectrograms_dir}")
 
     def create_spect_piece(self, preprocessed_audio_folder, beat_path, dataset_name):
+        """
+        Create spectrogram for a single audio piece.
+
+        This method creates a spectrogram for a single audio piece located in the `preprocessed_audio_folder`.
+        The beat annotations for the audio piece are loaded from the `beat_path` file.
+        The created spectrogram is saved in the `spectrograms_dir` directory.
+
+        Args:
+            preprocessed_audio_folder (Path): The path to the preprocessed audio folder.
+            beat_path (Path): The path to the beat annotations file.
+            dataset_name (str): The name of the dataset.
+
+        Returns:
+            metadata (list): A list containing the metadata of the created spectrogram.
+        """
         metadata = []
         spect_lens = {} # store the length of the spectrograms for each tempo augmentation. The key is the stretch.
         for filename in self.filenames:
@@ -125,13 +172,13 @@ class AudioPreprocessing(object):
         Only use this if you want to start from new audio files, otherwise use the spectrograms provided in the repo.
 
         Args:
-            data_dir (Path): path to the data directory
-            out_sr (int): output sample rate
-            aug_sr (int): sample rate for computing the augmentations, this needs to be high enough (e.g., 44100) to not create problems during pitch shifting
-            ext (str): extension of the audio files
-            pitch_shift (tuple): lowest and highest (included) pitch shift in semitones (e.g., -5, 6).
-            time_stretch (tuple): maximum percentage and stride for time stretching
-            verbose (bool): verbose output
+            orig_audio_paths (Path): The path to the file with the original audio paths for each dataset.
+            out_sr (int, optional): The output sample rate. Defaults to 22050.
+            aug_sr (int, optional): The sample rate for the augmentations. Defaults to 44100.
+            ext (str, optional): The extension of the audio files. Defaults to 'wav'.
+            pitch_shift (tuple, optional): A tuple specifying the minimum and maximum (inclusive) pitch shift values considered. Defaults to (-5, 6).
+            time_stretch (tuple, optional): A tuple specifying the min/max (inclusive) time stretch and stride in percentage considered. Defaults to (20, 4).
+            verbose (bool, optional): Whether to print verbose information. Defaults to False.
         """
         super(AudioPreprocessing, self).__init__()
         self.preprocessed_dir = BASEPATH / 'data' / 'preprocessed'
