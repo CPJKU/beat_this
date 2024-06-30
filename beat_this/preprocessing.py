@@ -2,7 +2,6 @@ from tqdm import tqdm
 from pathlib import Path
 import soundfile as sf
 import librosa
-import madmom
 import numpy as np
 import os
 import pandas as pd
@@ -10,36 +9,12 @@ import argparse
 from pedalboard import time_stretch, Pedalboard, PitchShift
 import concurrent.futures
 from git import Repo
-import wave
 import torchaudio
 import torch
-from beat_this.utils import get_spect_len, filename_to_augmentation
+from beat_this.utils import filename_to_augmentation, load_audio, save_audio
 from beat_this.dataset.augment import precomputed_augmentation_filenames
 
-
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
-
-
-def load_audio(path):
-    try:
-        return sf.read(path, dtype='float64')
-    except Exception:
-        # some files are not readable by soundfile, try madmom
-        return madmom.io.load_audio_file(str(path), dtype="float64")
-
-
-def save_audio(path, waveform, samplerate, resample_from=None):
-    if resample_from and resample_from != samplerate:
-        waveform = librosa.resample(waveform,
-                                    orig_sr=resample_from,
-                                    target_sr=samplerate)
-    try:
-        waveform = np.asarray(waveform, dtype=np.float64)
-        sf.write(path, waveform, samplerate=samplerate)
-    except KeyboardInterrupt:
-        path.unlink()  # avoid half-written files
-        raise
-
+BASEPATH = Path(__file__).parent.parent.relative_to(Path.cwd())
 
 def save_spectrogram(path, spectrogram):
     try:
@@ -50,13 +25,20 @@ def save_spectrogram(path, spectrogram):
 
 
 class SpectCreation():
-    def __init__(self, pitch_shift, time_stretch, audio_sr, mel_args):
+    def __init__(self, pitch_shift, time_stretch, audio_sr, mel_args, verbose=False):
         super(SpectCreation, self).__init__()
         # define the directories
         self.preprocessed_dir = BASEPATH / 'data' / 'preprocessed'
         self.mono_tracks_dir = self.preprocessed_dir / 'mono_tracks'
         self.spectrograms_dir = self.preprocessed_dir / 'spectrograms'
         self.annotations_dir = BASEPATH / 'data' / 'beat_annotations'
+
+        if verbose:
+            print("Preprocessed dir: ", self.preprocessed_dir.absolute())
+            print("Mono tracks dir: ", self.mono_tracks_dir.absolute())
+            print("Spectrograms dir: ", self.spectrograms_dir.absolute())
+            print("Annotations dir: ", self.annotations_dir.absolute())
+        self.verbose = verbose
         # remember the audio metadata
         self.audio_sr = audio_sr
         # create the mel spectrogram class
@@ -109,6 +91,11 @@ class SpectCreation():
                     compute_spect = True
             else:
                 compute_spect = True
+            if self.verbose:
+                if compute_spect:
+                    print(f"Computing {spect_path}")
+                else:
+                    print(f"Skipping {spect_path} because it exists")
             if compute_spect:
                 waveform, sr = load_audio(audio_path)
                 assert sr == self.audio_sr, f"Sample rate mismatch: {sr} != {self.audio_sr}"
@@ -299,43 +286,3 @@ def augment_audio_file(folder_path, waveform, aug_type, amount, aug_sr, out_sr, 
         print(f"writing {out_path}")
     save_audio(out_path, augmented, out_sr,
             resample_from=aug_sr)
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--orig_audio_paths", type=str,
-                        help="path to the file with the original audio paths for each dataset", default='data/audio_paths.csv')
-    parser.add_argument(
-        "--pitch_shift", metavar="LOW:HIGH",
-        type=str, default="-5:6", help="pitch shift in semitones (default: %(default)s)")
-    parser.add_argument("--time_stretch", metavar="MAX:STRIDE",
-                        type=str, default="20:4", help="time stretch in percentage and stride (default: %(default)s)")
-    parser.add_argument("--verbose", action='store_true',
-                        help="verbose output")
-    args = parser.parse_args()
-
-    # set the base path
-    global BASEPATH
-    BASEPATH = Path(__file__).parent.parent.parent.relative_to(Path.cwd())
-    # check if the orig_audio_paths exists, supporting both relative and absolute paths
-    if Path(args.orig_audio_paths).exists():
-        orig_audio_paths = args.orig_audio_paths
-    elif Path(BASEPATH, args.orig_audio_paths).exists():
-        orig_audio_paths = Path(BASEPATH, args.orig_audio_paths)
-    else:
-        raise FileNotFoundError(f"File {args.orig_audio_paths} not found")
-
-    # preprocess audio
-    dp = AudioPreprocessing(orig_audio_paths=orig_audio_paths, out_sr=22050, aug_sr=44100,
-                            pitch_shift=args.pitch_shift and tuple(
-                                map(int, args.pitch_shift.split(':'))),
-                            time_stretch=args.time_stretch and tuple(map(int, args.time_stretch.split(':'))), verbose=args.verbose)
-    dp.preprocess_audio()
-
-    # compute spectrograms
-    mel_args = dict(n_fft=1024, hop_length=441, f_min=30, f_max=11000,
-                    n_mels=128, mel_scale='slaney', normalized='frame_length', power=1)
-    audio_folder = Path(BASEPATH, 'data', 'preprocessed', 'mono_tracks')
-    sc = SpectCreation(pitch_shift=args.pitch_shift and tuple(map(int, args.pitch_shift.split(':'))),
-                        time_stretch=args.time_stretch and tuple(map(int, args.time_stretch.split(':'))), 
-                            audio_sr=22050, mel_args=mel_args)
-    sc.create_spects()
