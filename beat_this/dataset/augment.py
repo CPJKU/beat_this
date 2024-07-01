@@ -1,6 +1,5 @@
 import numpy as np
 import torch
-from beat_this.utils import PAD_TOKEN
 from pathlib import Path
 
 

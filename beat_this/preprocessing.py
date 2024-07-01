@@ -43,6 +43,18 @@ def save_spectrogram(path, spectrogram):
         path.unlink()  # avoid half-written files
         raise
 
+class LogMelSpect(torch.nn.Module):
+    def __init__(self, sample_rate=22050 , n_fft=1024, hop_length=441, f_min=30, f_max=11000, n_mels=128, mel_scale='slaney', normalized='frame_length', power=1, log_multiplier=1000, device='cpu'):
+        super().__init__()
+        self.spect_class = torchaudio.transforms.MelSpectrogram(sample_rate=sample_rate, n_fft=n_fft, hop_length=hop_length, f_min=f_min, f_max=f_max, n_mels=n_mels, mel_scale=mel_scale, normalized=normalized, power=power).to(device)
+        self.log_multiplier = log_multiplier
+        
+
+    def forward(self, x):
+        """Input is a waveform as a monodimensional array of shape T, 
+        output is a 2D log mel spectrogram of shape (F,128)."""
+        return torch.log1p(self.log_multiplier * self.spect_class(x).T)
+
 
 class SpectCreation():
     def __init__(self, pitch_shift, time_stretch, audio_sr, mel_args, verbose=False):
@@ -74,8 +86,7 @@ class SpectCreation():
         # remember the audio metadata
         self.audio_sr = audio_sr
         # create the mel spectrogram class
-        self.spect_class = torchaudio.transforms.MelSpectrogram(
-            sample_rate=audio_sr, **mel_args)
+        self.logspect_class = LogMelSpect(audio_sr, **mel_args)
         # define the augmentations
         self.augmentations = {}
         if pitch_shift is not None:
@@ -146,11 +157,9 @@ class SpectCreation():
             if compute_spect:
                 waveform, sr = load_audio(audio_path)
                 assert sr == self.audio_sr, f"Sample rate mismatch: {sr} != {self.audio_sr}"
-                # compute the mel spectrogram
-                spect = self.spect_class(torch.tensor(
-                    waveform, dtype=torch.float32).unsqueeze(0)).squeeze(0).T
-                # scale the values with log(1 + 1000 * x)
-                spect = torch.log1p(1000*spect)
+                # compute the mel spectrogram and scale the values with log(1 + 1000 * x)
+                spect = self.logspect_class(torch.tensor(
+                    waveform, dtype=torch.float32))
                 # save the spectrogram as numpy array
                 spect_path.parent.mkdir(parents=True, exist_ok=True)
                 save_spectrogram(spect_path, spect.numpy())

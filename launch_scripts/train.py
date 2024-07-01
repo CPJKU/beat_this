@@ -8,14 +8,11 @@ import torch
 import argparse
 import os
 from pathlib import Path
-# import wandb
-
 
 from beat_this.dataset.dataset import BeatDataModule
 from beat_this.model.pl_module import PLBeatThis
 
 
-# torch.multiprocessing.set_sharing_strategy("file_system")
 # for repeatability
 BEAT_THIS_SEED = int(os.environ.get("BEAT_THIS_SEED", 0))
 seed_everything(BEAT_THIS_SEED, workers=True)
@@ -24,26 +21,20 @@ seed_everything(BEAT_THIS_SEED, workers=True)
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--gpu", type=int, default=0)
-    parser.add_argument("--force-flash-attention", default=False,
-                        action=argparse.BooleanOptionalAction)
+    parser.add_argument(
+        "--force-flash-attention", default=False, action=argparse.BooleanOptionalAction
+    )
     parser.add_argument(
         "--compile",
-        action='store',
+        action="store",
         nargs="*",
         type=str,
-        # default=[],
-        default=["frontend", "transformer_blocks", "task_heads"],
-        help="Which model parts to compile, among frontend, transformer_encoder, task_heads"
+        default=[],
+        # default=["frontend", "transformer_blocks", "task_heads"],
+        help="Which model parts to compile, among frontend, transformer_encoder, task_heads",
     )
     parser.add_argument("--n-layers", type=int, default=6)
     parser.add_argument("--transformer-dim", type=int, default=512)
-    parser.add_argument(
-        "--middle-dropout",
-        type=float,
-        # default=0.2,
-        default=0,
-        help="dropout rate to apply between frontend and the main transformer blocks",
-    )
     parser.add_argument(
         "--frontend-dropout",
         type=float,
@@ -58,18 +49,20 @@ def main():
     )
     parser.add_argument("--lr", type=float, default=0.0008)
     parser.add_argument("--weight-decay", type=float, default=0.01)
-    parser.add_argument(
-        "--logger", type=str, choices=["wandb", "none"], default="none"
-    )
+    parser.add_argument("--logger", type=str, choices=["wandb", "none"], default="none")
     parser.add_argument("--num-workers", type=int, default=8)
     parser.add_argument("--n-heads", type=int, default=16)
-    parser.add_argument("--fps", type=int, default=50,
-                        help="The spectrograms fps.")
+    parser.add_argument("--fps", type=int, default=50, help="The spectrograms fps.")
     parser.add_argument(
         "--loss",
         type=str,
         default="shift_tolerant_weighted_bce",
-        choices=["shift_tolerant_weighted_bce", "fast_shift_tolerant_weighted_bce", "weighted_bce", "bce"],
+        choices=[
+            "shift_tolerant_weighted_bce",
+            "fast_shift_tolerant_weighted_bce",
+            "weighted_bce",
+            "bce",
+        ],
         help="The loss to use",
     )
     parser.add_argument(
@@ -157,7 +150,7 @@ def main():
     print(args)
 
     if args.logger == "wandb":
-        name = f"{'noval ' if not args.val else ''}{'hung ' if args.hung_data else ''}{'fold' + str(args.fold) + ' ' if args.fold is not None else ''}{args.loss}-h{args.transformer_dim}-d{args.frontend_dropout},{args.middle_dropout},{args.transformer_dropout}-aug{args.tempo_augmentation}{args.pitch_augmentation}{args.mask_augmentation}"
+        name = f"{'noval ' if not args.val else ''}{'hung ' if args.hung_data else ''}{'fold' + str(args.fold) + ' ' if args.fold is not None else ''}{args.loss}-h{args.transformer_dim}-d{args.frontend_dropout},{args.transformer_dropout}-aug{args.tempo_augmentation}{args.pitch_augmentation}{args.mask_augmentation}"
         logger = WandbLogger(project="JBT", entity="vocsep", name=name)
     else:
         logger = None
@@ -176,13 +169,15 @@ def main():
         augmentations["pitch"] = {"min": -5, "max": 6}
     if args.mask_augmentation:
         # kind, min_count, max_count, min_len, max_len, min_parts, max_parts
-        augmentations["mask"] = {"kind": "permute",
-                                 "min_count": 1,
-                                 "max_count": 6,
-                                 "min_len": 0.1,
-                                 "max_len": 2,
-                                 "min_parts": 5,
-                                 "max_parts": 9}
+        augmentations["mask"] = {
+            "kind": "permute",
+            "min_count": 1,
+            "max_count": 6,
+            "min_len": 0.1,
+            "max_len": 2,
+            "min_parts": 5,
+            "max_parts": 9,
+        }
 
     datamodule = BeatDataModule(
         data_dir,
@@ -200,21 +195,37 @@ def main():
     datamodule.setup()
 
     # compute positive weights
-    pos_weights = datamodule.get_train_positive_weights(
-        widen_target_mask=3
-    )
+    pos_weights = datamodule.get_train_positive_weights(widen_target_mask=3)
     print("Using positive weights: ", pos_weights)
-    dropout = {"middle" : args.middle_dropout, "frontend": args.frontend_dropout,"transformer" : args.transformer_dropout}
-    pl_model = PLBeatThis(spect_dim=128, fps=50, transformer_dim=args.transformer_dim, ff_mult=4, n_layers=args.n_layers, stem_dim=32, dropout=dropout, lr=args.lr, weight_decay=args.weight_decay,
-                          pos_weights=pos_weights, head_dim=32, loss_type=args.loss, warmup_steps=args.warmup_steps, max_epochs=args.max_epochs, use_dbn=args.dbn, eval_trim_beats=args.eval_trim_beats, predict_full_pieces=False)
+    dropout = {
+        "frontend": args.frontend_dropout,
+        "transformer": args.transformer_dropout,
+    }
+    pl_model = PLBeatThis(
+        spect_dim=128,
+        fps=50,
+        transformer_dim=args.transformer_dim,
+        ff_mult=4,
+        n_layers=args.n_layers,
+        stem_dim=32,
+        dropout=dropout,
+        lr=args.lr,
+        weight_decay=args.weight_decay,
+        pos_weights=pos_weights,
+        head_dim=32,
+        loss_type=args.loss,
+        warmup_steps=args.warmup_steps,
+        max_epochs=args.max_epochs,
+        use_dbn=args.dbn,
+        eval_trim_beats=args.eval_trim_beats,
+        predict_full_pieces=False,
+    )
     for part in args.compile:
         if hasattr(pl_model.model, part):
-            setattr(pl_model.model, part, torch.compile(
-                getattr(pl_model.model, part)))
+            setattr(pl_model.model, part, torch.compile(getattr(pl_model.model, part)))
             print("Will compile model", part)
         else:
-            raise ValueError("The model is missing the part",
-                             part, "to compile")
+            raise ValueError("The model is missing the part", part, "to compile")
 
     callbacks = [LearningRateMonitor(logging_interval="step")]
     # save only the last model
@@ -234,9 +245,7 @@ def main():
     )
 
     trainer.fit(pl_model, datamodule)
-    trainer.test(
-        pl_model, datamodule
-    )
+    trainer.test(pl_model, datamodule)
 
 
 if __name__ == "__main__":

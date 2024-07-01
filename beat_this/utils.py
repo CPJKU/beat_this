@@ -6,25 +6,6 @@ import soundfile as sf
 import madmom
 import librosa
 
-def load_audio(path):
-    try:
-        return sf.read(path, dtype='float64')
-    except Exception:
-        # some files are not readable by soundfile, try madmom
-        return madmom.io.load_audio_file(str(path), dtype="float64")
-
-
-def save_audio(path, waveform, samplerate, resample_from=None):
-    if resample_from and resample_from != samplerate:
-        waveform = librosa.resample(waveform,
-                                    orig_sr=resample_from,
-                                    target_sr=samplerate)
-    try:
-        waveform = np.asarray(waveform, dtype=np.float64)
-        sf.write(path, waveform, samplerate=samplerate)
-    except KeyboardInterrupt:
-        path.unlink()  # avoid half-written files
-        raise
 
 def index_to_framewise(index, length):
     """Convert an index to a framewise sequence"""
@@ -138,3 +119,48 @@ def split_predict_aggregate(spect: torch.Tensor, chunk_size: int, border_size: i
     model_prediction["beat"] = piece_prediction_beat.unsqueeze(0)
     model_prediction["downbeat"] = piece_prediction_downbeat.unsqueeze(0)
     return model_prediction
+
+def save_beat_csv(beats, downbeats, outpath):
+    """
+    Save beat information to a csv file in the standard .beat format.
+    The class assume that all downbeats are also beats.
+
+    Args:
+        beats (numpy.ndarray): Array of beat positions in seconds.
+        downbeats (numpy.ndarray): Array of downbeat positions in seconds.
+        outpath (str): Path to the output CSV file.
+
+    Returns:
+        None
+    """
+    # check if all downbeats are beats
+    if not np.all(np.isin(downbeats, beats)):
+        raise ValueError("Not all downbeats are beats.")
+
+    # handle pickup measure, by considering the beat number of the first full measure
+    # find the number of beats between the first two downbeats
+    if len(downbeats) > 2:
+        beat_in_first_measure = beats[(beats < downbeats[1]) & (beats >= downbeats[0])].shape[0]
+        # find the number of pickup beats
+        pickup_beats = beats[beats < downbeats[0]].shape[0]
+        if pickup_beats < beat_in_first_measure:
+            start_counter = beat_in_first_measure - pickup_beats
+        else: 
+            print("WARNING: There are more pickup beats than beats in the first measure. This should not happen. The pickup measure will be considered as a normal measure.")
+            pickup_beats = 0
+            beat_in_first_measure = 0
+            counter = 0
+    else:
+        print("WARNING: There are less than two downbeats in the predictions. Something may be wrong. No pickup measure will be considered.")
+        start_counter = 0
+
+    counter = start_counter
+    # write the beat file
+    Path(outpath).parent.mkdir(parents=True, exist_ok=True)
+    with open(outpath, "w") as f:
+        for beat in beats:
+            if beat in downbeats:
+                counter = 1
+            else:
+                counter += 1
+            f.write(str(beat) + "\t" + str(counter) + "\n")

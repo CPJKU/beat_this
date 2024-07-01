@@ -28,7 +28,7 @@ class BeatThis(nn.Module):
         head_dim (int): The dimension of each attention head for the partial transformers in the frontend and the transformer blocks (default: 32).
         stem_dim (int): The out dimension of the stem convolutional layer (default: 32).
         dropout (dict): A dictionary specifying the dropout rates for different parts of the model
-            (default: {"frontend": 0.1, "middle": 0.2, "transformer": 0.2}).
+            (default: {"frontend": 0.1, "transformer": 0.2}).
     """
 
     def __init__(
@@ -39,15 +39,13 @@ class BeatThis(nn.Module):
         n_layers=6,
         head_dim=32,
         stem_dim=32,
-        dropout={"frontend": 0.1,"middle": 0.2, "transformer": 0.2},
+        dropout={"frontend": 0.1, "transformer": 0.2},
     ):
         super().__init__()
 
         assert transformer_dim % head_dim == 0, "transformer_dim must be divisible by head_dim"
         n_heads = transformer_dim // head_dim
         rotary_embed = RotaryEmbedding(head_dim)
-
-        self.middle_dropout = nn.Dropout(dropout["middle"])
 
         # create the frontend
         stem = nn.Sequential(
@@ -67,7 +65,7 @@ class BeatThis(nn.Module):
             frontend_blocks.append(
                 nn.Sequential(
                     OrderedDict(
-                        partial=PartialFTTrasformer(
+                        partial=PartialFTTransformer(
                             dim=_dim,
                             dim_head=head_dim,
                             n_head=_dim // head_dim,
@@ -119,7 +117,6 @@ class BeatThis(nn.Module):
 
     def forward(self, x):
         x = self.frontend(x)
-        x = self.middle_dropout(x)
         x = self.transformer_blocks(x)
         x = self.task_heads(x)
         return x
@@ -129,10 +126,6 @@ class BeatThis(nn.Module):
         for key in list(state_dict.keys()):  # use list to take a snapshot of the keys
             if "._orig_mod" in key:
                 state_dict[key.replace("._orig_mod", "")] = state_dict.pop(key)
-        # allow loading from the PLBeatThis lightning checkpoint
-        for key in list(state_dict.keys()):  # use list to take a snapshot of the keys
-            if "model." in key:
-                state_dict[key.replace("model.", "")] = state_dict.pop(key)
         super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
 
     def state_dict(self, *args, **kwargs):
@@ -175,7 +168,7 @@ class PartialRoformer(nn.Module):
         x = rearrange(x, f"{pattern} -> b c f t", b=b)
         return x
     
-class PartialFTTrasformer(nn.Module):
+class PartialFTTransformer(nn.Module):
     """
     Takes a (batch, channels, freqs, time) input, applies self-attention and
     a feed-forward block alternatively across frequencies and across time.
@@ -199,10 +192,6 @@ class PartialFTTrasformer(nn.Module):
 
     def forward(self, x):
         b = len(x)
-        # if self.direction == 'f':
-        #     pattern = "(b t) f c"
-        # elif self.direction == 't':
-        #     pattern = "(b f) t c"
         # frequency directed partial transformer
         x = rearrange(x, f"b c f t -> (b t) f c")
         x = x + self.attnF(x)

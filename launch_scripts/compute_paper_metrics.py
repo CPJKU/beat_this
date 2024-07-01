@@ -1,11 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Computes predictions for a given model and dataset, prints metrics, and
-optionally dumps predictions to a given file.
-For usage information, call with --help.
-"""
-
 from pytorch_lightning import Trainer, seed_everything
 import torch
 import numpy as np
@@ -31,7 +23,7 @@ def main():
                         help="Local checkpoint files to use")
     parser.add_argument("--output_type", type=str, default="dict", choices=("dict", "beat"),
                         help="output type: dict or .beat files (default: %(default)s)")
-    parser.add_argument("--predict_datasplit", type=str,
+    parser.add_argument("--datasplit", type=str,
                         choices=("train", "val", "test"),
                         default="val",
                         help="data split to use: train, val or test "
@@ -87,7 +79,7 @@ def main():
         # create datamodule
         datamodule = datamodule_setup(args, modelfile)
         predict_dataloader = getattr(
-            datamodule, f'{args.predict_datasplit}_dataloader')()
+            datamodule, f'{args.datasplit}_dataloader')()
         # create model and trainer
         model, trainer = model_setup(args, modelfile)
         # predict
@@ -117,7 +109,7 @@ def main():
             # create datamodule only once, as we assume it is the same for all models
             datamodule = datamodule_setup(args, modelfiles[0])
             predict_dataloader = getattr(
-                datamodule, f'{args.predict_datasplit}_dataloader')()
+                datamodule, f'{args.datasplit}_dataloader')()
             # create model and trainer
             models = []
             trainers = []
@@ -154,7 +146,7 @@ def main():
                 print(f"Model {i_model+1}/{len(modelfiles)}")
                 datamodule = datamodule_setup(args, modelfile)
                 predict_dataloader = getattr(
-                    datamodule, f'{args.predict_datasplit}_dataloader')()
+                    datamodule, f'{args.datasplit}_dataloader')()
                 # create model and trainer
                 model, trainer = model_setup(args, modelfile)
                 # predict
@@ -204,7 +196,7 @@ def datamodule_setup(args, modelfile):
     if args.full_piece_prediction:
         datamodule_hparams['train_length'] = None
     datamodule = BeatDataModule(**datamodule_hparams)
-    datamodule.setup(stage='test' if args.predict_datasplit ==
+    datamodule.setup(stage='test' if args.datasplit ==
                      'test' else 'fit')
     return datamodule
 
