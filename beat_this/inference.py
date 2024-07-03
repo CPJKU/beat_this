@@ -8,35 +8,6 @@ from beat_this.utils import split_predict_aggregate
 from beat_this.model.beat_tracker import BeatThis
 from beat_this.model.postprocessor import Postprocessor
 
-# def make_log_mel_spect(waveform : np.ndarray, audio_sr : int, device : torch.device):
-#     """
-#     Compute the log Mel spectrogram of a given audio waveform.
-
-#     Args:
-#         waveform (numpy.ndarray): The input waveform.
-#         audio_sr (int): The sample rate of the audio.
-#         device (torch.device): The device to perform the computation on.
-
-#     Returns:
-#         torch.Tensor: The log Mel spectrogram.
-
-#     """
-#     if waveform.ndim != 1: # if stereo, convert to mono
-#         waveform = np.mean(waveform, axis=1)
-#     if audio_sr != 22050: # resample to 22050 if necessary
-#         waveform = librosa.resample(waveform, orig_sr=audio_sr, target_sr=22050)
-    
-#     waveform = torch.tensor(waveform, dtype=torch.float32, device=device)
-#     print("Computing spectrogram...")
-#     mel_args = dict(n_fft=1024, hop_length=441, f_min=30, f_max=11000,
-#                     n_mels=128, mel_scale='slaney', normalized='frame_length', power=1)
-#     spect_class = torchaudio.transforms.MelSpectrogram(
-#             sample_rate=22050, **mel_args).to(device)
-#     spect = spect_class(waveform.unsqueeze(0)).squeeze(0).T
-#     # scale the values with log(1 + 1000 * x)
-#     spect = torch.log1p(1000*spect)
-#     return spect
-
 def lightning_to_torch(checkpoint : dict):
     """
     Convert a PyTorch Lightning checkpoint to a PyTorch checkpoint.
@@ -67,13 +38,6 @@ def load_model(checkpoint_path : str, device : torch.device):
         model.load_state_dict(checkpoint['state_dict'])
     return model.to(device)
 
-def load_model_url(checkpoint_url : str, device : torch.device):
-    model = BeatThis()
-    checkpoint = torch.hub.load_state_dict_from_url(checkpoint_url, map_location="cpu")
-    # modify the checkpoint to remove the prefix "model.", so we can load a lightning module checkpoint in pure pytorch
-    checkpoint = lightning_to_torch(checkpoint)
-    model.load_state_dict(checkpoint['state_dict'])
-    return model.to(device)
 
 def predict_piece(audio_path, model, dbn, device ):
     print("Loading audio...")

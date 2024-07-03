@@ -35,7 +35,6 @@ class PLBeatThis(LightningModule):
         max_epochs = 100,
         use_dbn = False,
         eval_trim_beats=5,
-        predict_full_pieces = False,
     ):
         super().__init__()
         self.save_hyperparameters()     
@@ -65,7 +64,6 @@ class PLBeatThis(LightningModule):
 
         self.postprocessor = Postprocessor(type="dbn" if use_dbn else "minimal", fps=fps)
         self.eval_trim_beats = eval_trim_beats
-        self.predict_full_pieces = predict_full_pieces
         self.metrics = Metrics(eval_trim_beats=eval_trim_beats)
         
 
@@ -80,15 +78,14 @@ class PLBeatThis(LightningModule):
 
     def _compute_metrics(self, batch, model_prediction, step="val"):
         # compute for beat
-        metrics_beat, piecewise_beat = self._compute_metrics_target(batch, model_prediction, target="beat", step=step)	
+        metrics_beat = self._compute_metrics_target(batch, model_prediction, target="beat", step=step)	
         # compute for downbeat
-        metrics_downbeat, piecewise_downbeat = self._compute_metrics_target(batch,model_prediction, target="downbeat", step=step)
+        metrics_downbeat = self._compute_metrics_target(batch,model_prediction, target="downbeat", step=step)
         
         # concatenate dictionaries
         metrics = {**metrics_beat, **metrics_downbeat}
-        piecewise = {**piecewise_beat, **piecewise_downbeat}
 
-        return metrics, piecewise
+        return metrics
     
     def _compute_metrics_target(self, batch, model_prediction, target, step):  
 
@@ -109,14 +106,8 @@ class PLBeatThis(LightningModule):
         
         # average the beat metrics across the dictionary
         batch_metric = {key + f"_{target}": np.mean([x[key] for x in piecewise_metrics]) for key in piecewise_metrics[0].keys()}
-        # save non-averaged results for piecewise evaluation
-        piecewise = {}
-        if step == "test":
-            piecewise[f"F-measure_{target}"] = [p["F-measure"] for p in piecewise_metrics]
-            piecewise[f"CMLt_{target}"] = [p["CMLt"] for p in piecewise_metrics]
-            piecewise[f"AMLt_{target}"] = [p["AMLt"] for p in piecewise_metrics]
  
-        return batch_metric, piecewise
+        return batch_metric
 
     def log_losses(self, losses, batch_size, step="train"):
         # log for separate targets
@@ -145,20 +136,14 @@ class PLBeatThis(LightningModule):
         # postprocess the predictions
         model_prediction = self.postprocessor(model_prediction, batch["padding_mask"])
         # compute the metrics
-        metrics, piecewise = self._compute_metrics(batch, model_prediction, step="val")
+        metrics = self._compute_metrics(batch, model_prediction, step="val")
         # log
         self.log_losses(losses, len(batch["spect"]), "val")
         self.log_metrics(metrics, batch["spect"].shape[0], "val")
 
     def test_step(self, batch, batch_idx):
-        # run the model
-        model_prediction = self.model(batch["spect"])
-        # compute loss
+        metrics, model_prediction, _, _ = self.predict_step(batch, batch_idx)
         losses = self._compute_loss(batch, model_prediction)
-        # postprocess the predictions
-        model_prediction = self.postprocessor(model_prediction, batch["padding_mask"])
-        # compute the metrics
-        metrics, piecewise = self._compute_metrics(batch, model_prediction, step="test")
         # log
         self.log_losses(losses, len(batch["spect"]), "test")
         self.log_metrics(metrics, batch["spect"].shape[0], "test")
@@ -166,7 +151,7 @@ class PLBeatThis(LightningModule):
     def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0, chunk_size: int = 1500, overlap_mode: str = 'keep_first') -> Any:
         """
         Compute predictions and metrics for a batch (a dictionary with an "spect" key).
-        If self.predict_full_pieces==True, will split up the audio into multiple chunks of chunk size,
+        It splits up the audio into multiple chunks of chunk size,
          which should correspond to the length of the sequence the model was trained with.
         Potential overlaps between chunks can be handled in two ways:
         by keeping the predictions of the excerpt coming first (overlap_mode='keep_first'), or
@@ -174,27 +159,22 @@ class PLBeatThis(LightningModule):
         Note that overlaps appear as the last excerpt is moved backwards
         when it would extend over the end of the piece.
         """
-        if self.predict_full_pieces:
-            if batch["spect"].shape[0] != 1:
-                raise ValueError("When `predict_full_pieces` is True, only `batch_size=1` is supported")
-            if torch.any(~batch["padding_mask"]):
-                raise ValueError("When `predict_full_pieces` is True, the Dataset must not pad inputs")
-            # compute border size according to the loss type
-            if hasattr(self.beat_loss,"spread_targets"): # discard the edges that are affected by the max-pooling in the loss
-                border_size = self.beat_loss.spread_targets
-            else:
-                border_size = 0
-            model_prediction = split_predict_aggregate(batch["spect"][0], chunk_size, border_size, overlap_mode, self.model)
-            
+        if batch["spect"].shape[0] != 1:
+            raise ValueError("When predicting full pieces, only `batch_size=1` is supported")
+        if torch.any(~batch["padding_mask"]):
+            raise ValueError("When predicting full pieces, the Dataset must not pad inputs")
+        # compute border size according to the loss type
+        if hasattr(self.beat_loss,"spread_targets"): # discard the edges that are affected by the max-pooling in the loss
+            border_size = self.beat_loss.spread_targets
         else:
-            # run the model
-            model_prediction = self.model(batch["spect"])
+            border_size = 0
+        model_prediction = split_predict_aggregate(batch["spect"][0], chunk_size, border_size, overlap_mode, self.model)
 
         # postprocess the predictions
         model_prediction = self.postprocessor(model_prediction, batch["padding_mask"])
         # compute the metrics
-        metrics, piecewise = self._compute_metrics(batch, model_prediction, step="test")
-        return metrics, piecewise, model_prediction, batch["dataset"], batch["spect_path"]
+        metrics = self._compute_metrics(batch, model_prediction, step="test")
+        return metrics, model_prediction, batch["dataset"], batch["spect_path"]
 
 
     def configure_optimizers(self):

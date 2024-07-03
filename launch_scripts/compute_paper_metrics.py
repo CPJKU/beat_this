@@ -13,78 +13,18 @@ from beat_this.model.pl_module import PLBeatThis
 seed_everything(0, workers=True)
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Computes predictions for a given model and dataset, "
-        "prints metrics, and optionally dumps predictions to a given file.")
-    parser.add_argument("--models", type=str,
-                        nargs='+',
-                        required=True,
-                        help="Local checkpoint files to use")
-    parser.add_argument("--output_type", type=str, default="dict", choices=("dict", "beat"),
-                        help="output type: dict or .beat files (default: %(default)s)")
-    parser.add_argument("--datasplit", type=str,
-                        choices=("train", "val", "test"),
-                        default="val",
-                        help="data split to use: train, val or test "
-                        "(default: %(default)s)")
-    parser.add_argument("--gpu", type=int, default=0)
-    parser.add_argument("--num_workers", type=int, default=8,
-                        help="number of data loading workers ")
-    parser.add_argument("--eval_trim_beats", metavar="SECONDS",
-                        type=float, default=None,
-                        help="Override whether to skip the first given seconds "
-                        "per piece in evaluating (default: as stored in model)")
-    parser.add_argument(
-        "--dbn",
-        default=None,
-        action=argparse.BooleanOptionalAction,
-        help="override the option to use madmom postprocessing dbn",
-    )
-    parser.add_argument(
-        "--full_piece_prediction",
-        default=False,
-        action=argparse.BooleanOptionalAction,
-        help="Predict on full pieces instead of 1500 frames (~30s) segments",
-    )
-    parser.add_argument(
-        "--aggregation-type",
-        type=str,
-        choices=("mean-std", "k-fold"),
-        default="mean-std",
-        help="Type of aggregation to use for multiple models; ignored if only one model is given",
-    )
-
-    args = parser.parse_args()
-
-    # split the models in multiple single model
-    if Path(args.models[0]).is_file():
-        modelfiles = args.models
-    else:
-        # infer the path from the run id
-        modelfiles = []
-        for id in args.models:
-            folder = Path("JBT", id, "checkpoints")
-            potential_ckpts = list(folder.glob("*.ckpt"))
-            if len(potential_ckpts) != 1:
-                raise ValueError(
-                    f"Expected one .ckpt file in {folder}, found {len(potential_ckpts)}")
-            modelfiles.append(potential_ckpts[0])
-
-    print("Loading models", modelfiles)
-
-    if len(modelfiles) == 1:
+def main(args):
+    if len(args.models) == 1:
+        print("Single model prediction for", args.models[0])
         # single model prediction
-        modelfile = modelfiles[0]
+        modelfile = args.models[0]
         # create datamodule
         datamodule = datamodule_setup(args, modelfile)
-        predict_dataloader = getattr(
-            datamodule, f'{args.datasplit}_dataloader')()
         # create model and trainer
         model, trainer = model_setup(args, modelfile)
         # predict
         metrics, dataset, preds, piece = compute_predictions(
-            model, trainer, predict_dataloader)
+            model, trainer, datamodule.predict_dataloader())
 
         # compute averaged metrics
         averaged_metrics = {k: np.mean(v) for k, v in metrics.items()}
@@ -107,21 +47,19 @@ def main():
         if args.aggregation_type == "mean-std":
             # computing result variability for the same dataset and different model seeds
             # create datamodule only once, as we assume it is the same for all models
-            datamodule = datamodule_setup(args, modelfiles[0])
-            predict_dataloader = getattr(
-                datamodule, f'{args.datasplit}_dataloader')()
+            datamodule = datamodule_setup(args, args.models[0])
             # create model and trainer
             models = []
             trainers = []
-            for modelfile in modelfiles:
-                model, trainer = model_setup(args, modelfile)
+            for modelfile in args.models:
+                model, trainer = model_setup(args, checkpoint_path=modelfile)
                 models.append(model)
                 trainers.append(trainer)
             # predict
             all_metrics = []
             for model, trainer in zip(models, trainers):
                 metrics, dataset, preds, piece = compute_predictions(
-                    model, trainer, predict_dataloader)
+                    model, trainer, datamodule.predict_dataloader())
                 # compute averaged metrics for one model
                 averaged_metrics = {k: np.mean(v) for k, v in metrics.items()}
                 all_metrics.append(averaged_metrics)
@@ -142,16 +80,14 @@ def main():
             all_piece_dataset = []
             all_piece = []
             # create datamodule for each model
-            for i_model, modelfile in enumerate(modelfiles):
-                print(f"Model {i_model+1}/{len(modelfiles)}")
+            for i_model, modelfile in enumerate(args.models):
+                print(f"Model {i_model+1}/{len(args.models)}")
                 datamodule = datamodule_setup(args, modelfile)
-                predict_dataloader = getattr(
-                    datamodule, f'{args.datasplit}_dataloader')()
                 # create model and trainer
                 model, trainer = model_setup(args, modelfile)
                 # predict
                 metrics, dataset, preds, piece = compute_predictions(
-                    model, trainer, predict_dataloader)
+                    model, trainer, datamodule.predict_dataloader())
                 all_piece_metrics.append(metrics)
                 all_piece_dataset.append(dataset)
                 all_piece.append(piece)
@@ -183,34 +119,31 @@ def datamodule_setup(args, modelfile):
     # Load the datamodule
     print("Creating datamodule")
     data_dir = Path(__file__).parent.parent.relative_to(Path.cwd()) / 'data'
-    datamodule_hparams = torch.load(modelfile, map_location='cpu')[
+    if str(modelfile).startswith("https://"):
+        datamodule_hparams = torch.hub.load_state_dict_from_url(modelfile)[
         'datamodule_hyper_parameters']
-    # update the hparams with the ones from the arguments, or the one required for full piece prediction
-    datamodule_hparams.update(
-        data_dir=data_dir,
-        length_based_oversampling_factor=0,
-        augmentations={},
-        batch_size=1,)
+    else:
+        datamodule_hparams = torch.load(modelfile, map_location='cpu')[
+        'datamodule_hyper_parameters']
+    # update the hparams with the ones from the arguments
     if args.num_workers is not None:
         datamodule_hparams["num_workers"] = args.num_workers
-    if args.full_piece_prediction:
-        datamodule_hparams['train_length'] = None
+    datamodule_hparams["predict_datasplit"] = args.datasplit
+    datamodule_hparams["data_dir"] = data_dir
     datamodule = BeatDataModule(**datamodule_hparams)
     datamodule.setup(stage='test' if args.datasplit ==
                      'test' else 'fit')
     return datamodule
 
 
-def model_setup(args, modelfile):
+def model_setup(args, checkpoint_path):
     model_hparams = {}
     if args.eval_trim_beats is not None:
         model_hparams['eval_trim_beats'] = args.eval_trim_beats
     if args.dbn is not None:
         model_hparams['use_dbn'] = args.dbn
-    if args.full_piece_prediction:
-        model_hparams['predict_full_pieces'] = True
 
-    model = PLBeatThis.load_from_checkpoint(modelfile, map_location='cpu',
+    model = PLBeatThis.load_from_checkpoint(checkpoint_path, map_location='cpu',
                                             **model_hparams)
     trainer = Trainer(
         accelerator="auto",
@@ -222,17 +155,52 @@ def model_setup(args, modelfile):
     return model, trainer
 
 
-def compute_predictions(model, trainer, dataloader):
+def compute_predictions(model, trainer, predict_dataloader):
     print("Computing predictions ...")
-    out = trainer.predict(model, dataloader)
+    out = trainer.predict(model, predict_dataloader)
     metrics = [o[0] for o in out]
-    preds = [o[2] for o in out]
-    dataset = np.asarray([o[3][0] for o in out])
-    piece = np.asarray([o[4][0] for o in out])
+    preds = [o[1] for o in out]
+    dataset = np.asarray([o[2][0] for o in out])
+    piece = np.asarray([o[3][0] for o in out])
     # convert metrics from list of per-batch dictionaries to a single dictionary with np arrays as values
     metrics = {k: np.asarray([m[k] for m in metrics]) for k in metrics[0]}
     return metrics, dataset, preds, piece
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(
+        description="Computes predictions for a given model and dataset, "
+        "prints metrics, and optionally dumps predictions to a given file.")
+    parser.add_argument("--models", type=str,
+                        nargs='+',
+                        required=True,
+                        help="Local checkpoint files to use")
+    parser.add_argument("--datasplit", type=str,
+                        choices=("train", "val", "test"),
+                        default="val",
+                        help="data split to use: train, val or test "
+                        "(default: %(default)s)")
+    parser.add_argument("--gpu", type=int, default=0)
+    parser.add_argument("--num_workers", type=int, default=8,
+                        help="number of data loading workers ")
+    parser.add_argument("--eval_trim_beats", metavar="SECONDS",
+                        type=float, default=None,
+                        help="Override whether to skip the first given seconds "
+                        "per piece in evaluating (default: as stored in model)")
+    parser.add_argument(
+        "--dbn",
+        default=None,
+        action=argparse.BooleanOptionalAction,
+        help="override the option to use madmom postprocessing dbn",
+    )
+    parser.add_argument(
+        "--aggregation-type",
+        type=str,
+        choices=("mean-std", "k-fold"),
+        default="mean-std",
+        help="Type of aggregation to use for multiple models; ignored if only one model is given",
+    )
+
+    args = parser.parse_args()
+
+    main(args)

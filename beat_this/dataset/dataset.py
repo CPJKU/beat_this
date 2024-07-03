@@ -187,13 +187,14 @@ class BeatDataModule(pl.LightningDataModule):
         hung_data (bool, optional): If True, only use the datasets from the Hung et al. paper for training; validation is still on all datasets. Defaults to False.
         no_val (bool, optional): If True, train on all train+val data and do not use a validation set; for compatibility reason, the validation metrics are still computed, but are not meaningful. Defaults to False.
         spect_fps (int, optional): The frames per second of the spectrograms. Defaults to 50.
-        length_based_oversampling_factor (int, optional): The factor by which to oversample based on sequence length. Defaults to 0.
+        length_based_oversampling_factor (int, optional): The factor by which to oversample the train dataset based on sequence length. Defaults to 0.
         fold (int, optional): The fold number for cross-validation. If None, the single split is used. Defaults to None.
+        predict_datasplit (str, optional): The split to use for prediction. Prediction dataset is always full pieces. Defaults to "test".
     """
     def __init__(self, data_dir, batch_size=8,
                  train_length=1500, num_workers=20, augmentations={"pitch": {"min": -5, "max": 6}, "tempo": {"min": -20, "max": 20, "stride": 4}},
                  test_dataset="gtzan", hung_data = False, no_val= False, spect_fps=50,
-                 length_based_oversampling_factor=0, fold=None):
+                 length_based_oversampling_factor=0, fold=None, predict_datasplit="test" ):
         super().__init__()
         self.save_hyperparameters()
         self.initialized = False
@@ -241,6 +242,7 @@ class BeatDataModule(pl.LightningDataModule):
         # check if augmentations.keys() contains only 'mask', 'pitch' and 'time'
         if not set(augmentations.keys()).issubset({'mask', 'pitch', 'tempo'}):
             raise ValueError(f"Unsupported augmentations: {augmentations.keys()}")
+        self.predict_datasplit = predict_datasplit
 
 
     def setup(self, stage=None):
@@ -302,20 +304,31 @@ class BeatDataModule(pl.LightningDataModule):
 
         print("Creating datasets...")
         shared_kwargs = dict(data_folder=self.data_dir,
-                            spect_fps=self.spect_fps,
-                            train_length=self.train_length)
+                            spect_fps=self.spect_fps,)
         self.train_dataset = BeatTrackingDataset(self.metadata_df.iloc[train_idx].copy(),
                                                  deterministic=False,
                                                  augmentations=self.augmentations,
+                                                 train_length=self.train_length,
                                                  **shared_kwargs)
         self.val_dataset = BeatTrackingDataset(self.metadata_df.iloc[val_idx].copy(),
                                                 deterministic=True,
                                                 augmentations={},
+                                                train_length=self.train_length,
                                                 **shared_kwargs)
         self.test_dataset = BeatTrackingDataset(self.metadata_df.iloc[test_idx].copy(),
                                                 deterministic=True,
                                                 augmentations={},
+                                                train_length=None,
                                                 **shared_kwargs)
+        if self.predict_datasplit == "test":
+            self.predict_dataset = self.test_dataset
+        else:
+            # we need to create new datasets with full pieces, since val and train datasets are only excerpts
+            self.predict_dataset = BeatTrackingDataset(self.metadata_df.iloc[eval(self.predict_datasplit + "_idx")].copy(),
+                                                deterministic=True,
+                                                augmentations={},
+                                                train_length=None,
+                                                **shared_kwargs) 
         print(f"Train size: {len(self.train_dataset)}, Val size: {len(self.val_dataset)}, Test size: {len(self.test_dataset)}")
         self.initialized = True
 
@@ -328,9 +341,10 @@ class BeatDataModule(pl.LightningDataModule):
         return DataLoader(self.val_dataset, batch_size=self.batch_size, num_workers=self.num_workers)
 
     def test_dataloader(self):
-        # Warning: this only runs on the middle 30s excerpt of the long pieces
-        # Consider updating if not testing on GTZAN dataset
-        return DataLoader(self.test_dataset, batch_size=self.batch_size, num_workers=self.num_workers)
+        return DataLoader(self.test_dataset, batch_size=1, num_workers=self.num_workers)
+    
+    def predict_dataloader(self):
+        return DataLoader(self.predict_dataset, batch_size=1, num_workers=self.num_workers)
     
     def get_train_positive_weights(self, widen_target_mask=3):
         """
