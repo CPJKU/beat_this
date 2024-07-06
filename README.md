@@ -3,7 +3,8 @@ Accurate and general beat tracker from the paper ...
 
 ## Compute beats for a audio file
 
- ```python launch_scripts/predict.py --model https://cloud.cp.jku.at/index.php/s/Dbtd47JqzDxWoks/download/final0.ckpt --gpu 0 --audio-path path_to_audio_file
+```
+python launch_scripts/predict.py --model https://cloud.cp.jku.at/index.php/s/Dbtd47JqzDxWoks/download/final0.ckpt --gpu 0 --audio-path path_to_audio_file
 ```
 
 You can add ```--dbn``` if you want to use the DBN. The DBN parameters are the default one from madmom.
