@@ -3,7 +3,9 @@ Accurate and general beat tracker from the paper ...
 
 ## Compute beats for a audio file
 
- ```python launch_scripts/predict.py --model final0 --audio-path path_to_audio_file
+ 
+```
+python launch_scripts/predict.py --model final0 --audio-path path_to_audio_file
 ```
 
 Set ```--gpu -1``` if you want to run on cpu.
