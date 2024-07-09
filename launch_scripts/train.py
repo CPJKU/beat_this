@@ -12,12 +12,6 @@ from pathlib import Path
 from beat_this.dataset.dataset import BeatDataModule
 from beat_this.model.pl_module import PLBeatThis
 
-
-# for repeatability
-BEAT_THIS_SEED = int(os.environ.get("BEAT_THIS_SEED", 0))
-seed_everything(BEAT_THIS_SEED, workers=True)
-
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--gpu", type=int, default=0)
@@ -119,6 +113,18 @@ def main():
         help="Use online mask aumentation",
     )
     parser.add_argument(
+        "--sum-head",
+        default=True,
+        action=argparse.BooleanOptionalAction,
+        help="Use SumHead instead of two separate Linear heads",
+    )
+    parser.add_argument(
+        "--partial-transformers",
+        default=True,
+        action=argparse.BooleanOptionalAction,
+        help="Use Partial transformers in the frontend",
+    )
+    parser.add_argument(
         "--length-based-oversampling-factor",
         type=float,
         default=0.65,
@@ -142,14 +148,25 @@ def main():
         default=None,
         help="If given, the CV fold number to *not* train on (0-based).",
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=0,
+        help="Seed for the random number generators.",
+    )
+
+   
 
     args = parser.parse_args()
+
+    # for repeatability
+    seed_everything(args.seed, workers=True)
 
     print("Starting a new run with the following parameters:")
     print(args)
 
     if args.logger == "wandb":
-        name = f"{'noval ' if not args.val else ''}{'hung ' if args.hung_data else ''}{'fold' + str(args.fold) + ' ' if args.fold is not None else ''}{args.loss}-h{args.transformer_dim}-d{args.frontend_dropout},{args.transformer_dropout}-aug{args.tempo_augmentation}{args.pitch_augmentation}{args.mask_augmentation}"
+        name = f"{'noval ' if not args.val else ''}{'hung ' if args.hung_data else ''}{'fold' + str(args.fold) + ' ' if args.fold is not None else ''}{args.loss}-h{args.transformer_dim}-aug{args.tempo_augmentation}{args.pitch_augmentation}{args.mask_augmentation}"
         logger = WandbLogger(project="beat_this", name=name)
     else:
         logger = None
@@ -161,7 +178,7 @@ def main():
         torch.backends.cuda.enable_math_sdp(False)
 
     data_dir = Path(__file__).parent.parent.relative_to(Path.cwd()) / "data"
-    checkpoint_dir =Path(__file__).parent.parent.relative_to(Path.cwd()) / "checkpoint_dir"
+    checkpoint_dir =Path(__file__).parent.parent.relative_to(Path.cwd()) / "checkpoints"
     augmentations = {}
     if args.tempo_augmentation:
         augmentations["tempo"] = {"min": -20, "max": 20, "stride": 4}
@@ -218,6 +235,8 @@ def main():
         max_epochs=args.max_epochs,
         use_dbn=args.dbn,
         eval_trim_beats=args.eval_trim_beats,
+        sum_head=args.sum_head,
+        partial_transformers=args.partial_transformers,
     )
     for part in args.compile:
         if hasattr(pl_model.model, part):
@@ -228,7 +247,7 @@ def main():
 
     callbacks = [LearningRateMonitor(logging_interval="step")]
     # save only the last model
-    callbacks.append(ModelCheckpoint(every_n_epochs=1, dirpath=str(checkpoint_dir)))
+    callbacks.append(ModelCheckpoint(every_n_epochs=1, dirpath=str(checkpoint_dir), filename=f"S{args.seed} {name}"))
 
     trainer = Trainer(
         max_epochs=args.max_epochs,

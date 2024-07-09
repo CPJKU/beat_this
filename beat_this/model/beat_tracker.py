@@ -40,6 +40,8 @@ class BeatThis(nn.Module):
         head_dim=32,
         stem_dim=32,
         dropout={"frontend": 0.1, "transformer": 0.2},
+        sum_head=True,
+        partial_transformers=True
     ):
         super().__init__()
 
@@ -64,22 +66,22 @@ class BeatThis(nn.Module):
         for _ in range(3):
             frontend_blocks.append(
                 nn.Sequential(
-                    OrderedDict(
-                        partial=PartialFTTransformer(
+                    OrderedDict([
+                        ("partial", PartialFTTransformer(
                             dim=_dim,
                             dim_head=head_dim,
                             n_head=_dim // head_dim,
                             rotary_embed=rotary_embed,
                             dropout=dropout["frontend"],
-                        ),
+                        ) if partial_transformers else nn.Identity()),
                         # conv block
-                        conv2d=nn.Conv2d(in_channels=_dim, out_channels=_dim * 2,
-                                kernel_size=(2, 3), stride=(2, 1), padding=(0, 1), bias=False),
+                        ("conv2d", nn.Conv2d(in_channels=_dim, out_channels=_dim * 2,
+                                kernel_size=(2, 3), stride=(2, 1), padding=(0, 1), bias=False)),
                         # out_channels : 64, 128, 256
                         # freqs : 16, 8, 4 (due to the stride=2)
-                        norm=nn.BatchNorm2d(_dim*2),
-                        activation=nn.GELU(),
-                    )
+                        ("norm", nn.BatchNorm2d(_dim*2)),
+                        ("activation", nn.GELU()),
+                    ])
                 )
             )
             _dim = _dim * 2
@@ -94,7 +96,10 @@ class BeatThis(nn.Module):
                                                        ff_dropout=dropout["transformer"], rotary_embed=rotary_embed, ff_mult=ff_mult, dim_head=head_dim, norm_output=True)
 
         # create the output heads
-        self.task_heads = SumHead(transformer_dim)
+        if sum_head:
+            self.task_heads = SumHead(transformer_dim)
+        else:
+            raise NotImplementedError("Only sum head is implemented")
 
         # init all weights
         self.apply(self._init_weights)

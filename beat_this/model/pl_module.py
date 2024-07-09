@@ -35,6 +35,8 @@ class PLBeatThis(LightningModule):
         max_epochs = 100,
         use_dbn = False,
         eval_trim_beats=5,
+        sum_head=True,
+        partial_transformers=True,
     ):
         super().__init__()
         self.save_hyperparameters()     
@@ -42,7 +44,7 @@ class PLBeatThis(LightningModule):
         self.weight_decay = weight_decay
         self.fps = fps
         # create model
-        self.model = BeatThis(spect_dim=spect_dim, transformer_dim=transformer_dim, ff_mult=ff_mult, stem_dim=stem_dim, n_layers=n_layers, head_dim=head_dim, dropout=dropout)
+        self.model = BeatThis(spect_dim=spect_dim, transformer_dim=transformer_dim, ff_mult=ff_mult, stem_dim=stem_dim, n_layers=n_layers, head_dim=head_dim, dropout=dropout, sum_head=sum_head, partial_transformers=partial_transformers)
         self.warmup_steps = warmup_steps
         self.max_epochs = max_epochs
         # set up the losses
