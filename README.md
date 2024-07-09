@@ -3,14 +3,20 @@ Accurate and general beat tracker from the paper ...
 
 ## Compute beats for a audio file
 
- ```python launch_scripts/predict.py --model https://cloud.cp.jku.at/index.php/s/Dbtd47JqzDxWoks/download/final0.ckpt --gpu 0 --audio-path path_to_audio_file
+ ```python launch_scripts/predict.py --model final0 --audio-path path_to_audio_file
 ```
 
+Set ```--gpu -1``` if you want to run on cpu.
 You can add ```--dbn``` if you want to use the DBN. The DBN parameters are the default one from madmom.
 
 ## Experiment reproducibility
 Compute results on the test set GTZAN
 
 ```
-python launch_scripts/compute_paper_metrics.py --models https://cloud.cp.jku.at/index.php/s/Dbtd47JqzDxWoks/download/final0.ckpt https://cloud.cp.jku.at/index.php/s/DCm9YLkTBAEc4y3/download/final1.ckpt https://cloud.cp.jku.at/index.php/s/E8A3McdxpwSGGwJ/download/final2.ckpt --gpu 0 --datasplit test
+python launch_scripts/compute_paper_metrics.py --models final0 final1 final2 --datasplit test
+```
+
+Compute k-fold
+```
+python launch_scripts/compute_paper_metrics.py --aggregation-type k-fold --models checkpoints/fold0.ckpt checkpoints/fold1.ckpt checkpoints/fold2.ckpt checkpoints/fold3.ckpt checkpoints/fold4.ckpt checkpoints/fold5.ckpt checkpoints/fold6.ckpt checkpoints/fold7.ckpt 
 ```

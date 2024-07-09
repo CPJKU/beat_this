@@ -8,6 +8,20 @@ from beat_this.utils import split_predict_aggregate
 from beat_this.model.beat_tracker import BeatThis
 from beat_this.model.postprocessor import Postprocessor
 
+CHECKPOINT_URL = {
+    "final0" : "https://cloud.cp.jku.at/index.php/s/Dbtd47JqzDxWoks/download/final0.ckpt",
+    "final1" : "https://cloud.cp.jku.at/index.php/s/DCm9YLkTBAEc4y3/download/final1.ckpt", 
+    "final2" : "https://cloud.cp.jku.at/index.php/s/E8A3McdxpwSGGwJ/download/final2.ckpt",
+    "fold0" :  "https://cloud.cp.jku.at/index.php/s/oZrBck4nCZLkkQw/download/fold0.ckpt",
+    "fold1" :  "https://cloud.cp.jku.at/index.php/s/rDaS9YtiYE6Qyrn/download/fold1.ckpt",
+    "fold2" :  "https://cloud.cp.jku.at/index.php/s/Z4PHTqD58x3C5dt/download/fold2.ckpt",
+    "fold3" :  "https://cloud.cp.jku.at/index.php/s/Cmc5wT6KEoHE4mP/download/fold3.ckpt",
+    "fold4" :  "https://cloud.cp.jku.at/index.php/s/tXz5KsmGrJNkPog/download/fold4.ckpt",
+    "fold5" :  "https://cloud.cp.jku.at/index.php/s/Mb95SoY2GtMEA3H/download/fold5.ckpt",
+    "fold6" :  "https://cloud.cp.jku.at/index.php/s/ADxyETzQQ5iGEj9/download/fold6.ckpt",
+    "fold7" :  "https://cloud.cp.jku.at/index.php/s/jPXq6HqJeeezcqH/download/fold7.ckpt",
+}
+
 def lightning_to_torch(checkpoint : dict):
     """
     Convert a PyTorch Lightning checkpoint to a PyTorch checkpoint.
@@ -27,8 +41,21 @@ def lightning_to_torch(checkpoint : dict):
     return checkpoint
 
 def load_model(checkpoint_path : str, device : torch.device):
+    """
+    Load a BeatThis model from a checkpoint.
+
+    Args:
+        checkpoint_path (str): The path to the checkpoint. Can be a local path, a URL, or a key in MODELS_URL.
+        device (torch.device): The device to load the model on.
+
+    Returns:
+        BeatThis: The loaded model.
+
+    """
     model = BeatThis()
     if checkpoint_path is not None:
+        if checkpoint_path in CHECKPOINT_URL:
+            checkpoint_path = CHECKPOINT_URL[checkpoint_path]
         if str(checkpoint_path).startswith("https://"):
             checkpoint = torch.hub.load_state_dict_from_url(checkpoint_path)
         else:

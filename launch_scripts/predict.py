@@ -50,7 +50,7 @@ if __name__ == "__main__":
         "--gpu",
         type=int,
         default=0,
-        help="which gpu to use, if any. -1 for cpu. Default is 0.",
+        help="which gpu to use (not the number of GPUs), if any. -1 for cpu. Default is 0.",
     )
     parser.add_argument(
         "--dbn",

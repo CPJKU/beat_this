@@ -8,6 +8,7 @@ import pandas as pd
 
 from beat_this.dataset.dataset import BeatDataModule
 from beat_this.model.pl_module import PLBeatThis
+from beat_this.inference import CHECKPOINT_URL
 
 # for repeatability
 seed_everything(0, workers=True)
@@ -17,11 +18,11 @@ def main(args):
     if len(args.models) == 1:
         print("Single model prediction for", args.models[0])
         # single model prediction
-        modelfile = args.models[0]
+        checkpoint_path = args.models[0]
         # create datamodule
-        datamodule = datamodule_setup(args, modelfile)
+        datamodule = datamodule_setup(checkpoint_path, args.num_workers, args.datasplit)
         # create model and trainer
-        model, trainer = model_setup(args, modelfile)
+        model, trainer = plmodel_setup(checkpoint_path, args.eval_trim_beats, args.dbn, args.gpu)
         # predict
         metrics, dataset, preds, piece = compute_predictions(
             model, trainer, datamodule.predict_dataloader())
@@ -47,12 +48,12 @@ def main(args):
         if args.aggregation_type == "mean-std":
             # computing result variability for the same dataset and different model seeds
             # create datamodule only once, as we assume it is the same for all models
-            datamodule = datamodule_setup(args, args.models[0])
+            datamodule = datamodule_setup(args.models[0], args.num_workers, args.datasplit)
             # create model and trainer
             models = []
             trainers = []
-            for modelfile in args.models:
-                model, trainer = model_setup(args, checkpoint_path=modelfile)
+            for checkpoint_path in args.models:
+                model, trainer = plmodel_setup(checkpoint_path, args.eval_trim_beats, args.dbn, args.gpu)
                 models.append(model)
                 trainers.append(trainer)
             # predict
@@ -80,11 +81,11 @@ def main(args):
             all_piece_dataset = []
             all_piece = []
             # create datamodule for each model
-            for i_model, modelfile in enumerate(args.models):
+            for i_model, checkpoint_path in enumerate(args.models):
                 print(f"Model {i_model+1}/{len(args.models)}")
-                datamodule = datamodule_setup(args, modelfile)
+                datamodule = datamodule_setup(checkpoint_path, args.num_workers, args.datasplit)
                 # create model and trainer
-                model, trainer = model_setup(args, modelfile)
+                model, trainer = plmodel_setup(checkpoint_path, args.eval_trim_beats, args.dbn, args.gpu)
                 # predict
                 metrics, dataset, preds, piece = compute_predictions(
                     model, trainer, datamodule.predict_dataloader())
@@ -115,39 +116,64 @@ def main(args):
                 f"Unknown aggregation type {args.aggregation_type}")
 
 
-def datamodule_setup(args, modelfile):
+def datamodule_setup(checkpoint_path, num_workers, datasplit):
     # Load the datamodule
     print("Creating datamodule")
     data_dir = Path(__file__).parent.parent.relative_to(Path.cwd()) / 'data'
-    if str(modelfile).startswith("https://"):
-        datamodule_hparams = torch.hub.load_state_dict_from_url(modelfile)[
+    if str(checkpoint_path) in CHECKPOINT_URL:
+        checkpoint_path = CHECKPOINT_URL[checkpoint_path]
+    if str(checkpoint_path).startswith("https://"):
+        datamodule_hparams = torch.hub.load_state_dict_from_url(checkpoint_path)[
         'datamodule_hyper_parameters']
     else:
-        datamodule_hparams = torch.load(modelfile, map_location='cpu')[
+        datamodule_hparams = torch.load(checkpoint_path, map_location='cpu')[
         'datamodule_hyper_parameters']
     # update the hparams with the ones from the arguments
-    if args.num_workers is not None:
-        datamodule_hparams["num_workers"] = args.num_workers
-    datamodule_hparams["predict_datasplit"] = args.datasplit
+    if num_workers is not None:
+        datamodule_hparams["num_workers"] = num_workers
+    datamodule_hparams["predict_datasplit"] = datasplit
     datamodule_hparams["data_dir"] = data_dir
     datamodule = BeatDataModule(**datamodule_hparams)
-    datamodule.setup(stage='test' if args.datasplit ==
+    datamodule.setup(stage='test' if datasplit ==
                      'test' else 'fit')
     return datamodule
 
 
-def model_setup(args, checkpoint_path):
-    model_hparams = {}
-    if args.eval_trim_beats is not None:
-        model_hparams['eval_trim_beats'] = args.eval_trim_beats
-    if args.dbn is not None:
-        model_hparams['use_dbn'] = args.dbn
+def plmodel_setup(checkpoint_path, eval_trim_beats, dbn, gpu):
+    """
+    Set up the pytorch lightning model and trainer for evaluation.
 
+    Args:
+        checkpoint_path (str): The path to the checkpoint file. Can be a local path, a URL, or a key in CHECKPOINT_URL.
+        eval_trim_beats (int or None): The number of beats to trim during evaluation. If None, the setting is taken from the pretrained model.
+        dbn (bool or None): Whether to use the Dynamic Bayesian Network (DBN) module during evaluation. If None, the default behavior from the pretrained model is used.
+        gpu (int): The index of the GPU device to use for training.
+
+    Returns:
+        tuple: A tuple containing the initialized pytorch lightning model and trainer.
+
+    """
+    model_hparams = {}
+    if eval_trim_beats is not None:
+        model_hparams['eval_trim_beats'] = eval_trim_beats
+    if dbn is not None:
+        model_hparams['use_dbn'] = dbn
+
+    if checkpoint_path in CHECKPOINT_URL:
+        checkpoint_path = CHECKPOINT_URL[checkpoint_path]
     model = PLBeatThis.load_from_checkpoint(checkpoint_path, map_location='cpu',
                                             **model_hparams)
+    # set correct device and accelerator
+    if gpu >= 0:
+        devices = [gpu]
+        accelerator = 'gpu'
+    else:
+        devices = 1
+        accelerator = "cpu"
+    # create trainer
     trainer = Trainer(
-        accelerator="auto",
-        devices=[args.gpu],
+        accelerator=accelerator,
+        devices=devices,
         logger=None,
         deterministic=True,
         precision='16-mixed',
