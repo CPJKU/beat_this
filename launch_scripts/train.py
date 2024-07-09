@@ -29,8 +29,7 @@ def main():
         action="store",
         nargs="*",
         type=str,
-        default=[],
-        # default=["frontend", "transformer_blocks", "task_heads"],
+        default=["frontend", "transformer_blocks", "task_heads"],
         help="Which model parts to compile, among frontend, transformer_encoder, task_heads",
     )
     parser.add_argument("--n-layers", type=int, default=6)
@@ -151,7 +150,7 @@ def main():
 
     if args.logger == "wandb":
         name = f"{'noval ' if not args.val else ''}{'hung ' if args.hung_data else ''}{'fold' + str(args.fold) + ' ' if args.fold is not None else ''}{args.loss}-h{args.transformer_dim}-d{args.frontend_dropout},{args.transformer_dropout}-aug{args.tempo_augmentation}{args.pitch_augmentation}{args.mask_augmentation}"
-        logger = WandbLogger(project="JBT", entity="vocsep", name=name)
+        logger = WandbLogger(project="beat_this", name=name)
     else:
         logger = None
 
@@ -162,6 +161,7 @@ def main():
         torch.backends.cuda.enable_math_sdp(False)
 
     data_dir = Path(__file__).parent.parent.relative_to(Path.cwd()) / "data"
+    checkpoint_dir =Path(__file__).parent.parent.relative_to(Path.cwd()) / "checkpoint_dir"
     augmentations = {}
     if args.tempo_augmentation:
         augmentations["tempo"] = {"min": -20, "max": 20, "stride": 4}
@@ -218,7 +218,6 @@ def main():
         max_epochs=args.max_epochs,
         use_dbn=args.dbn,
         eval_trim_beats=args.eval_trim_beats,
-        predict_full_pieces=False,
     )
     for part in args.compile:
         if hasattr(pl_model.model, part):
@@ -229,7 +228,7 @@ def main():
 
     callbacks = [LearningRateMonitor(logging_interval="step")]
     # save only the last model
-    callbacks.append(ModelCheckpoint(every_n_epochs=1))
+    callbacks.append(ModelCheckpoint(every_n_epochs=1, dirpath=str(checkpoint_dir)))
 
     trainer = Trainer(
         max_epochs=args.max_epochs,
