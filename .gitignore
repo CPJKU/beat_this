@@ -9,6 +9,7 @@ data/preprocessed/spectrograms_old2
 data/preprocessed/spectrograms_old3
 data/outputs
 data/audio_paths.csv
+clean_checkpoints.py
 
 __pycache__/
 *.py[cod]
