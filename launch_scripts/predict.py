@@ -11,15 +11,16 @@ def main(audio_path, modelfile, dbn, outpath, gpu):
         os.environ["CUDA_VISIBLE_DEVICES"] = str(
             gpu
         )  # this is necessary to avoid a bug which causes pytorch to not see any GPU in some systems
-        device = torch.device("cuda:0")
+        torch.cuda.device_count.cache_clear() 
+        device = torch.device("cuda")
     else:
         device = torch.device("cpu")
 
-    model = load_model(modelfile, device)
+    # model = load_model(modelfile, device)
 
-    beat, downbeat = audio2beat(audio_path, model, dbn, device)
+    model_prediction = audio2beat(audio_path, modelfile, dbn, device)
     print("Saving predictions...")
-    save_beat_csv(beat, downbeat, outpath)
+    save_beat_csv(model_prediction["postp_beat"], model_prediction["postp_downbeat"], outpath)
     print(f"Done, saved in {outpath}")
 
 
