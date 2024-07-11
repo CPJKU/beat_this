@@ -1,13 +1,9 @@
 import os
-import librosa
-from pathlib import Path
-import torchaudio
-import numpy as np
 import argparse
 import torch
 
 from beat_this.utils import save_beat_csv
-from beat_this.inference import predict_piece, load_model
+from beat_this.inference import audio2beat, load_model
 
 
 def main(audio_path, modelfile, dbn, outpath, gpu):
@@ -21,7 +17,7 @@ def main(audio_path, modelfile, dbn, outpath, gpu):
 
     model = load_model(modelfile, device)
 
-    beat, downbeat = predict_piece(audio_path, model, dbn, device)
+    beat, downbeat = audio2beat(audio_path, model, dbn, device)
     print("Saving predictions...")
     save_beat_csv(beat, downbeat, outpath)
     print(f"Done, saved in {outpath}")
@@ -38,7 +34,7 @@ if __name__ == "__main__":
         help="Path to the audio file to process",
     )
     parser.add_argument(
-        "--model", type=str, required=True, help="Local checkpoint files to use"
+        "--model", type=str, required=True, help="Checkpoint to use", default="final0"
     )
     parser.add_argument(
         "--output_path",

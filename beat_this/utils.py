@@ -115,10 +115,7 @@ def split_predict_aggregate(spect: torch.Tensor, chunk_size: int, border_size: i
     pred_chunks = [{"beat": p["beat"][0], "downbeat": p["downbeat"][0]} for p in pred_chunks]
     piece_prediction_beat, piece_prediction_downbeat = aggregate_prediction(pred_chunks, starts, spect.shape[0], chunk_size, border_size, overlap_mode, spect.device)
     # save it to model_prediction
-    model_prediction = {}
-    model_prediction["beat"] = piece_prediction_beat.unsqueeze(0)
-    model_prediction["downbeat"] = piece_prediction_downbeat.unsqueeze(0)
-    return model_prediction
+    return {"beat": piece_prediction_beat, "downbeat": piece_prediction_downbeat}
 
 def save_beat_csv(beats, downbeats, outpath):
     """

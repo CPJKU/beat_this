@@ -79,6 +79,9 @@ class PLBeatThis(LightningModule):
         return {"beat": beat_loss, "downbeat" : downbeat_loss, "total" : beat_loss+downbeat_loss}
 
     def _compute_metrics(self, batch, model_prediction, step="val"):
+        """
+        
+        """
         # compute for beat
         metrics_beat = self._compute_metrics_target(batch, model_prediction, target="beat", step=step)	
         # compute for downbeat
@@ -97,13 +100,19 @@ class PLBeatThis(LightningModule):
             # run evaluation
             metrics = self.metrics(piece_truth_time, pospt_pred, step=step)
             
-            return metrics, piece_truth_time
+            return metrics
+
+        # if the input was not batched, postp_target is an array instead of a tuple of arrays
+        # make it a tuple for consistency
+        postp_target = model_prediction[f"postp_{target}"]
+        if type(postp_target) != tuple:
+            postp_target = (model_prediction[f"postp_{target}"],)
 
         with ThreadPoolExecutor() as executor:
-            (piecewise_metrics, truth_time) = zip(*executor.map(compute_item,
-                                                model_prediction[f"postp_{target}"], 
-                                                batch[f"truth_orig_{target}"],
-                                                ))
+            piecewise_metrics = list(executor.map(compute_item,
+                                        postp_target,
+                                        batch[f"truth_orig_{target}"],
+                                        ))
 
         
         # average the beat metrics across the dictionary
@@ -173,7 +182,7 @@ class PLBeatThis(LightningModule):
         model_prediction = split_predict_aggregate(batch["spect"][0], chunk_size, border_size, overlap_mode, self.model)
 
         # postprocess the predictions
-        model_prediction = self.postprocessor(model_prediction, batch["padding_mask"])
+        model_prediction = self.postprocessor(model_prediction, None)
         # compute the metrics
         metrics = self._compute_metrics(batch, model_prediction, step="test")
         return metrics, model_prediction, batch["dataset"], batch["spect_path"]

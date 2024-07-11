@@ -99,7 +99,7 @@ class BeatThis(nn.Module):
         if sum_head:
             self.task_heads = SumHead(transformer_dim)
         else:
-            raise NotImplementedError("Only sum head is implemented")
+            self.task_heads = Head(transformer_dim)
 
         # init all weights
         self.apply(self._init_weights)
@@ -228,6 +228,20 @@ class SumHead(nn.Module):
         with torch.autocast(beat.device.type, enabled=False):
             beat = beat.float() + downbeat.float()
         return {"beat":beat, "downbeat": downbeat}
+    
+class Head(nn.Module):
+    """
+    A PyToch module that produces the final beat and downbeat prediction logits with independent linear layers outputs.
+    """
+    def __init__(self, input_dim):
+        super().__init__()
+        self.beat_downbeat_lin = nn.Linear(input_dim, 2)
+
+    def forward(self, x):
+        beat_downbeat = self.beat_downbeat_lin(x)
+        # separate beat from downbeat
+        beat, downbeat = rearrange(beat_downbeat, "b t c -> c b t", c=2)
+        return {"beat": beat, "downbeat": downbeat}
 
 
 if __name__ == "__main__":

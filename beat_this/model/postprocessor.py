@@ -9,6 +9,9 @@ class Postprocessor:
     """ Postprocessor for the beat and downbeat predictions of the model.
     The postprocessor takes the (framewise) model predictions and the padding mask, 
     and returns the postprocessed beat and downbeat as list of times in seconds.
+    The model predictions are expected to be in the form of a dictionary with keys "beat" and "downbeat".
+    The values in the dict can be 1D arrays (for only 1 piece) or 2D arrays, if a batch of pieces is considered.
+    The output dimensionality is the same as the input dimensionality.
     Two types of postprocessing are implemented:
         - minimal: a simple postprocessing that takes the maximum of the framewise predictions,
         and removes adjacent peaks.
@@ -24,17 +27,31 @@ class Postprocessor:
         if type == "dbn":
             self.dbn = DBNDownBeatTrackingProcessor(beats_per_bar=[3, 4], min_bpm=55.0, max_bpm=215.0, fps=self.fps, transition_lambda=100, )
     
+
     def __call__(self, model_prediction, padding_mask=None):
         if padding_mask is None:
             padding_mask = torch.ones_like(model_prediction["beat"], dtype=torch.bool)
         beat = model_prediction["beat"]
         downbeat = model_prediction["downbeat"]
+        
+        # if beat and downbeat are 1D tensors, add a batch dimension
+        if beat.ndim == 1:
+            beat = beat.unsqueeze(0)
+            downbeat = downbeat.unsqueeze(0)
+            padding_mask = padding_mask.unsqueeze(0)
+        
         if self.type == "minimal":
             postp_beat, postp_downbeat = self.postp_minimal(beat, downbeat, padding_mask)
         elif self.type == "dbn":
-           postp_beat, postp_downbeat = self.postp_dbn(beat, downbeat, padding_mask)
+            postp_beat, postp_downbeat = self.postp_dbn(beat, downbeat, padding_mask)
         else:
             raise ValueError("Invalid postprocessing type")
+        
+        # remove the batch dimension if it was added
+        if model_prediction["beat"].ndim == 1:
+            postp_beat = postp_beat[0]
+            postp_downbeat = postp_downbeat[0]
+        
         # update the model prediction dict
         model_prediction["postp_beat"] = postp_beat
         model_prediction["postp_downbeat"] = postp_downbeat

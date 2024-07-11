@@ -9,7 +9,7 @@
 # script multiple times with a shared output directory (via NFS).
 
 here="${0%/*}"
-outdir="$here/../JBT"
+outdir="$here/../checkpoints"
 
 train_seed() {
 	name="$1"
@@ -32,7 +32,7 @@ train_seed() {
 	fi
 	if [ ! -f "$lockfile" ]; then
 		echo "$HOSTNAME: $CUDA_VISIBLE_DEVICES" > "$lockfile"
-		JBT_SEED=$seed python3 "$here"/train.py --wandb_log --comment "$name" "${@:3}" && echo "success" >> "$lockfile" || echo "failed" >> "$lockfile"
+		JBT_SEED=$seed python3 "$here"/train.py --logger wandb --comment "$name" "${@:3}" && echo "success" >> "$lockfile" || echo "failed" >> "$lockfile"
 	fi
 }
 
@@ -56,13 +56,6 @@ train_cv() {
 	done
 }
 
-# common settings
-input="--input_enc=wav_mel(128,30,11000,log1pfix,3,bn,1024) --max_train_len=1500 --sample_rate=22050 --hop_size=441 --sampler=none"
-augments="--augmentations=pitch_or_tempo(-5,+6,20,4) --frontend_augmentations=mask(permute,1.0,1,6,0.1,2.0,5,10)"
-model="--n_heads=16 --compile transformer_encoder,frontend_final --task_heads=beat,downbeat:HSumBeat(Linear) --extra_frontend=CustomConv2d(1,C,32,4,3,s,4,BN,gelu,F,1,0.1,T,1,0.1,C,64,2,3,s,2,BN,gelu,F,2,0.1,T,2,0.1,C,128,2,3,s,2,BN,gelu,F,4,0.1,T,4,0.1,C,256,2,3,s,2,BN,gelu,L)"
-loss="--loss=beat:BCE_pos(3,0);beat:BCE_neg(3,6);downbeat:BCE_pos(3,0);downbeat:BCE_neg(3,6) --compute_pos_weight --widen_target_mask_loss=7"
-training="--val_frequency=5 --batch_size=8 --accumulate_grad_batches=8 --lenght_based_oversampling_factor 0.75 --max_epochs=100 --lr 0.0008 --optimizer=warm-split-adamw --weight_decay=0.01"
-
 # final model
 train "final" $input $augments $model $loss $training
 
@@ -71,12 +64,6 @@ train_cv "final-cv" $input $augments $model $loss $training
 
 # final model, no val
 train "final-noval" $input $augments $model $loss $training --val_datasets=""
-
-# final model, no val, post-swa
-swa="--max_epochs=110 --lr=0.0004 --optimizer=split-swa-adamw --save_every=1 --save_average=100"
-train_seed "final-noval-swa" 0 $input $augments $model $loss $training $swa --val_datasets="" --finetune_checkpoint JBT/m7mk6pta/checkpoints/epoch=99-step=20700.ckpt
-train_seed "final-noval-swa" 1 $input $augments $model $loss $training $swa --val_datasets="" --finetune_checkpoint JBT/oh69dpet/checkpoints/epoch=99-step=20700.ckpt
-train_seed "final-noval-swa" 2 $input $augments $model $loss $training $swa --val_datasets="" --finetune_checkpoint JBT/fsyt3udn/checkpoints/epoch=99-step=20700.ckpt
 
 # removing pitch augmentation
 train "no-pitch" $input $augments $model $loss $training "--augmentations=tempo(20,4)"
