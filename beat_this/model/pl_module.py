@@ -78,21 +78,21 @@ class PLBeatThis(LightningModule):
         # sum the losses and return them in a dictionary for logging
         return {"beat": beat_loss, "downbeat" : downbeat_loss, "total" : beat_loss+downbeat_loss}
 
-    def _compute_metrics(self, batch, model_prediction, step="val"):
+    def _compute_metrics(self, batch, postp_beat, postp_downbeat, step="val"):
         """
         
         """
         # compute for beat
-        metrics_beat = self._compute_metrics_target(batch, model_prediction, target="beat", step=step)	
+        metrics_beat = self._compute_metrics_target(batch, postp_beat, target="beat", step=step)	
         # compute for downbeat
-        metrics_downbeat = self._compute_metrics_target(batch,model_prediction, target="downbeat", step=step)
+        metrics_downbeat = self._compute_metrics_target(batch, postp_downbeat, target="downbeat", step=step)
         
         # concatenate dictionaries
         metrics = {**metrics_beat, **metrics_downbeat}
 
         return metrics
     
-    def _compute_metrics_target(self, batch, model_prediction, target, step):  
+    def _compute_metrics_target(self, batch, postp_target, target, step):  
 
         def compute_item(pospt_pred, truth_orig_target):
             # take the ground truth from the original version, so there are no quantization errors
@@ -104,9 +104,8 @@ class PLBeatThis(LightningModule):
 
         # if the input was not batched, postp_target is an array instead of a tuple of arrays
         # make it a tuple for consistency
-        postp_target = model_prediction[f"postp_{target}"]
         if type(postp_target) != tuple:
-            postp_target = (model_prediction[f"postp_{target}"],)
+            postp_target = (postp_target,)
 
         with ThreadPoolExecutor() as executor:
             piecewise_metrics = list(executor.map(compute_item,
@@ -145,9 +144,9 @@ class PLBeatThis(LightningModule):
         # compute loss
         losses = self._compute_loss(batch, model_prediction)
         # postprocess the predictions
-        model_prediction = self.postprocessor(model_prediction, batch["padding_mask"])
+        postp_beat, postp_downbeat = self.postprocessor(model_prediction["beat"], model_prediction["downbeat"], batch["padding_mask"])
         # compute the metrics
-        metrics = self._compute_metrics(batch, model_prediction, step="val")
+        metrics = self._compute_metrics(batch, postp_beat, postp_downbeat , step="val")
         # log
         self.log_losses(losses, len(batch["spect"]), "val")
         self.log_metrics(metrics, batch["spect"].shape[0], "val")
@@ -182,9 +181,9 @@ class PLBeatThis(LightningModule):
         model_prediction = split_predict_aggregate(batch["spect"][0], chunk_size, border_size, overlap_mode, self.model)
 
         # postprocess the predictions
-        model_prediction = self.postprocessor(model_prediction, None)
+        postp_beat, postp_downbeat = self.postprocessor(model_prediction["beat"], model_prediction["downbeat"], None)
         # compute the metrics
-        metrics = self._compute_metrics(batch, model_prediction, step="test")
+        metrics = self._compute_metrics(batch, postp_beat, postp_downbeat, step="test")
         return metrics, model_prediction, batch["dataset"], batch["spect_path"]
 
 

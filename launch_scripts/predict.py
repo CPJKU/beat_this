@@ -18,9 +18,9 @@ def main(audio_path, modelfile, dbn, outpath, gpu):
 
     # model = load_model(modelfile, device)
 
-    model_prediction = audio2beat(audio_path, modelfile, dbn, device)
+    beat, downbeat = audio2beat(audio_path, modelfile, dbn, device)
     print("Saving predictions...")
-    save_beat_csv(model_prediction["postp_beat"], model_prediction["postp_downbeat"], outpath)
+    save_beat_csv(beat, downbeat, outpath)
     print(f"Done, saved in {outpath}")
 
 

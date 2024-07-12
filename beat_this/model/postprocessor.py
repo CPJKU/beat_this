@@ -4,21 +4,21 @@ from einops import pack, unpack, rearrange
 import torch.nn.functional as F
 from madmom.features.downbeats import DBNDownBeatTrackingProcessor
 from concurrent.futures import ThreadPoolExecutor
+from typing import Optional, Tuple
 
 class Postprocessor:
     """ Postprocessor for the beat and downbeat predictions of the model.
-    The postprocessor takes the (framewise) model predictions and the padding mask, 
+    The postprocessor takes the (framewise) model predictions (beat and downbeats) and the padding mask, 
     and returns the postprocessed beat and downbeat as list of times in seconds.
-    The model predictions are expected to be in the form of a dictionary with keys "beat" and "downbeat".
-    The values in the dict can be 1D arrays (for only 1 piece) or 2D arrays, if a batch of pieces is considered.
+    The beats and downbeats can be 1D arrays (for only 1 piece) or 2D arrays, if a batch of pieces is considered.
     The output dimensionality is the same as the input dimensionality.
     Two types of postprocessing are implemented:
         - minimal: a simple postprocessing that takes the maximum of the framewise predictions,
         and removes adjacent peaks.
         - dbn: a postprocessing based on the Dynamic Bayesian Network proposed by Böck et al.
     Args:
-        type (str): the type of postprocessing to apply. Either "minimal" or "dbn".
-        fps (int): the frames per second of the model framewise predictions.
+        type (str): the type of postprocessing to apply. Either "minimal" or "dbn". Default is "minimal".
+        fps (int): the frames per second of the model framewise predictions. Default is 50.
     """
     def __init__(self, type: str = "minimal", fps: int = 50):
         assert type in ["minimal", "dbn"]
@@ -28,34 +28,44 @@ class Postprocessor:
             self.dbn = DBNDownBeatTrackingProcessor(beats_per_bar=[3, 4], min_bpm=55.0, max_bpm=215.0, fps=self.fps, transition_lambda=100, )
     
 
-    def __call__(self, model_prediction, padding_mask=None):
+    def __call__(self, beat : torch.Tensor, downbeat: torch.Tensor, padding_mask: Optional[torch.Tensor] = None) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Apply postprocessing to the input beat and downbeat tensors. Works with batched and unbatched inputs.
+        The output is a list of times in seconds, or a list of lists of times in seconds, if the input is batched.
+
+        Args:
+            beat (torch.Tensor): The input beat tensor.
+            downbeat (torch.Tensor): The input downbeat tensor.
+            padding_mask (torch.Tensor, optional): The padding mask tensor. Defaults to None.
+
+        Returns:
+            torch.Tensor: The postprocessed beat tensor.
+            torch.Tensor: The postprocessed downbeat tensor.
+        """
+        batched = False if beat.ndim == 1 else True
         if padding_mask is None:
-            padding_mask = torch.ones_like(model_prediction["beat"], dtype=torch.bool)
-        beat = model_prediction["beat"]
-        downbeat = model_prediction["downbeat"]
-        
+            padding_mask = torch.ones_like(beat, dtype=torch.bool)
+
         # if beat and downbeat are 1D tensors, add a batch dimension
-        if beat.ndim == 1:
+        if not batched:
             beat = beat.unsqueeze(0)
             downbeat = downbeat.unsqueeze(0)
             padding_mask = padding_mask.unsqueeze(0)
-        
+
         if self.type == "minimal":
             postp_beat, postp_downbeat = self.postp_minimal(beat, downbeat, padding_mask)
         elif self.type == "dbn":
             postp_beat, postp_downbeat = self.postp_dbn(beat, downbeat, padding_mask)
         else:
             raise ValueError("Invalid postprocessing type")
-        
+
         # remove the batch dimension if it was added
-        if model_prediction["beat"].ndim == 1:
+        if not batched:
             postp_beat = postp_beat[0]
             postp_downbeat = postp_downbeat[0]
-        
+
         # update the model prediction dict
-        model_prediction["postp_beat"] = postp_beat
-        model_prediction["postp_downbeat"] = postp_downbeat
-        return model_prediction
+        return postp_beat, postp_downbeat
 
     def postp_minimal(self, beat, downbeat, padding_mask):
         # concatenate beat and downbeat in the same tensor of shape (B, T, 2)
@@ -85,11 +95,11 @@ class Postprocessor:
         beat_frame = torch.nonzero(beat_peaks)
         downbeat_frame = torch.nonzero(downbeat_peaks)
         # remove adjacent peaks 
-        beat_frame = torch.tensor(deduplicate_peaks(beat_frame, width=1))
-        downbeat_frame = torch.tensor(deduplicate_peaks(downbeat_frame, width=1))
+        beat_frame = deduplicate_peaks(beat_frame, width=1)
+        downbeat_frame = deduplicate_peaks(downbeat_frame, width=1)
         # convert from frame to seconds
-        beat_time = (beat_frame / self.fps).cpu().numpy()
-        downbeat_time = (downbeat_frame / self.fps).cpu().numpy()
+        beat_time = beat_frame / self.fps
+        downbeat_time = downbeat_frame / self.fps
         # move the downbeat to the nearest beat
         if len(beat_time) > 0: # skip if there are no beats, like in the first training steps
             for i, d_time in enumerate(downbeat_time):
