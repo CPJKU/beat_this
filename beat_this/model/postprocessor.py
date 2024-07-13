@@ -135,7 +135,7 @@ class Postprocessor:
 
 
 
-def deduplicate_peaks(peaks, width=1):
+def deduplicate_peaks(peaks, width=1) -> np.ndarray:
     """
     Replaces groups of adjacent peak frame indices that are each not more
     than `width` frames apart by the average of the frame indices.
@@ -145,7 +145,7 @@ def deduplicate_peaks(peaks, width=1):
     try:
         p = next(peaks)
     except StopIteration:
-        return result
+        return np.array(result)
     c = 1
     for p2 in peaks:
         if p2 - p <= width:
