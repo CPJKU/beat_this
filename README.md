@@ -4,7 +4,7 @@ Accurate and general beat tracker from the paper ...
 ## Available models
 We release 3 main models, which were trained on all data, except the GTZAN dataset, with three different seeds. You can use them with the shortcut `final0`, `final1`, and `final2`. These are the models corresponding to "Our System" on Table 2 on the paper.
 
-Please be aware that, as the model ```final0``` was trained on all data except the GTZAN dataset, if you run the inference on some data that was used for training, the results may be unfairly good.
+Please be aware that, as the models ```final*``` was trained on all data except the GTZAN dataset, if you run the inference on some data that was used for training, the results may be unfairly good.
 
 The K-Fold models, and single split from the paper are also available.
 

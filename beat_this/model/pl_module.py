@@ -179,7 +179,8 @@ class PLBeatThis(LightningModule):
         else:
             border_size = 0
         model_prediction = split_predict_aggregate(batch["spect"][0], chunk_size, border_size, overlap_mode, self.model)
-
+        # add the batch dimension back in the prediction for consistency
+        model_prediction = {key: value.unsqueeze(0) for key, value in model_prediction.items()}
         # postprocess the predictions
         postp_beat, postp_downbeat = self.postprocessor(model_prediction["beat"], model_prediction["downbeat"], None)
         # compute the metrics
