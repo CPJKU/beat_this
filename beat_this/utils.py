@@ -2,9 +2,6 @@ from pathlib import Path
 import torch
 import torch.nn.functional as F
 import numpy as np
-import soundfile as sf
-import madmom
-import librosa
 
 
 def index_to_framewise(index, length):
@@ -92,10 +89,11 @@ def aggregate_prediction(pred_chunks, starts, full_size, chunk_size, border_size
     return piece_prediction_beat, piece_prediction_downbeat
 
 
-def split_predict_aggregate(spect: torch.Tensor, chunk_size: int, border_size: int, overlap_mode: str, model: torch.nn.Module):
+def split_predict_aggregate(spect: torch.Tensor, chunk_size: int, border_size: int, overlap_mode: str, model: torch.nn.Module) -> dict:
     """
     Function for pieces that are longer than the training length of the model.
     Split the input piece into chunks, run the model on them, and aggregate the predictions.
+    The spect is supposed to be a torch tensor of shape (time x bins), i.e., unbatched, and the output is also unbatched.
 
     Args:
         spect (torch.Tensor): the input piece
@@ -117,7 +115,7 @@ def split_predict_aggregate(spect: torch.Tensor, chunk_size: int, border_size: i
     # save it to model_prediction
     return {"beat": piece_prediction_beat, "downbeat": piece_prediction_downbeat}
 
-def save_beat_csv(beats, downbeats, outpath):
+def save_beat_csv(beats : np.ndarray, downbeats: np.ndarray, outpath: str) -> None:
     """
     Save beat information to a csv file in the standard .beat format.
     The class assume that all downbeats are also beats.
