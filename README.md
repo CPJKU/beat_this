@@ -1,10 +1,9 @@
 # Beat This
-Accurate and general beat tracker from the paper ...
+Accurate and general beat tracker from the paper "Beat This! Accurate Beat Tracking Without DBN Postprocessing".
 
 ## Available models
 We release 3 main models, which were trained on all data, except the GTZAN dataset, with three different seeds. You can use them with the shortcut `final0`, `final1`, and `final2`. These correspond to "Our System" in Table 2 on the paper.
-
-Please be aware that, as the models ```final*``` was trained on all data except the GTZAN dataset, if you run the inference on some data that was used for training, the results may be unfairly good.
+Please be aware that, as the models ```final*``` were trained on all data except the GTZAN dataset, the results may be unfairly good, if you run the inference on some data that was used for training.
 
 The K-Fold models and single split from the paper are also available.
 
@@ -43,7 +42,7 @@ print("Beat positions (in seconds):", beat)
 print("Downbeat positions (in seconds):", downbeat)
 ```
 
-If you plan on converting multiple files, the `Audio2Beat` class is more efficient, because it only load the model once:
+If you plan on converting multiple files, the `Audio2Beat` class is more efficient, because it only loads the model once:
 
 ```python
 from beat_this.inference import Audio2Beat
@@ -52,7 +51,7 @@ a2b = Audio2Beat(model_checkpoint=model_checkpoint, device=device, dbn=use_dbn)
 beat, downbeat = audio2beat(audio_path)
 ```
 
-You can produce a `.beat` file that can be imported into sonic visualizer with the command:
+You can produce a `.beat` file, that can be imported into [Sonic Visualizer](https://www.sonicvisualiser.org/), with the command:
 ```python
 from beat_this.utils import save_beat_csv
 
