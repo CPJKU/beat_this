@@ -11,7 +11,7 @@ def main(audio_path, modelfile, dbn, outpath, gpu):
         os.environ["CUDA_VISIBLE_DEVICES"] = str(
             gpu
         )  # this is necessary to avoid a bug which causes pytorch to not see any GPU in some systems
-        torch.cuda.device_count.cache_clear() 
+        torch.cuda.device_count.cache_clear()
         device = torch.device("cuda")
     else:
         device = torch.device("cpu")

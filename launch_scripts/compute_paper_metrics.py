@@ -22,16 +22,21 @@ def main(args):
         # create datamodule
         datamodule = datamodule_setup(checkpoint_path, args.num_workers, args.datasplit)
         # create model and trainer
-        model, trainer = plmodel_setup(checkpoint_path, args.eval_trim_beats, args.dbn, args.gpu)
+        model, trainer = plmodel_setup(
+            checkpoint_path, args.eval_trim_beats, args.dbn, args.gpu
+        )
         # predict
         metrics, dataset, preds, piece = compute_predictions(
-            model, trainer, datamodule.predict_dataloader())
+            model, trainer, datamodule.predict_dataloader()
+        )
 
         # compute averaged metrics
         averaged_metrics = {k: np.mean(v) for k, v in metrics.items()}
         # compute metrics averaged by dataset
-        dataset_metrics = {k: {d: np.mean(v[dataset == d]) for d in np.unique(
-            dataset)} for k, v in metrics.items()}
+        dataset_metrics = {
+            k: {d: np.mean(v[dataset == d]) for d in np.unique(dataset)}
+            for k, v in metrics.items()
+        }
         # create a dataframe with the dataset_metrics
         dataset_metrics_df = pd.DataFrame(dataset_metrics)
         # print for dataset
@@ -48,29 +53,38 @@ def main(args):
         if args.aggregation_type == "mean-std":
             # computing result variability for the same dataset and different model seeds
             # create datamodule only once, as we assume it is the same for all models
-            datamodule = datamodule_setup(args.models[0], args.num_workers, args.datasplit)
+            datamodule = datamodule_setup(
+                args.models[0], args.num_workers, args.datasplit
+            )
             # create model and trainer
             models = []
             trainers = []
             for checkpoint_path in args.models:
-                model, trainer = plmodel_setup(checkpoint_path, args.eval_trim_beats, args.dbn, args.gpu)
+                model, trainer = plmodel_setup(
+                    checkpoint_path, args.eval_trim_beats, args.dbn, args.gpu
+                )
                 models.append(model)
                 trainers.append(trainer)
             # predict
             all_metrics = []
             for model, trainer in zip(models, trainers):
                 metrics, dataset, preds, piece = compute_predictions(
-                    model, trainer, datamodule.predict_dataloader())
+                    model, trainer, datamodule.predict_dataloader()
+                )
                 # compute averaged metrics for one model
                 averaged_metrics = {k: np.mean(v) for k, v in metrics.items()}
                 all_metrics.append(averaged_metrics)
             # compute mean and standard deviations for all model averages
-            all_metrics_mean = {k: np.mean(
-                [m[k] for m in all_metrics]) for k in all_metrics[0]}
+            all_metrics_mean = {
+                k: np.mean([m[k] for m in all_metrics]) for k in all_metrics[0]
+            }
             all_metrics_std = {
-                k: np.std([m[k] for m in all_metrics]) for k in all_metrics[0]}
+                k: np.std([m[k] for m in all_metrics]) for k in all_metrics[0]
+            }
             all_metrics_stats = {
-                k: (all_metrics_mean[k], all_metrics_std[k]) for k, v in all_metrics[0].items()}
+                k: (all_metrics_mean[k], all_metrics_std[k])
+                for k, v in all_metrics[0].items()
+            }
             # print all metrics
             print("Metrics")
             for k, v in all_metrics_stats.items():
@@ -83,25 +97,38 @@ def main(args):
             # create datamodule for each model
             for i_model, checkpoint_path in enumerate(args.models):
                 print(f"Model {i_model+1}/{len(args.models)}")
-                datamodule = datamodule_setup(checkpoint_path, args.num_workers, args.datasplit)
+                datamodule = datamodule_setup(
+                    checkpoint_path, args.num_workers, args.datasplit
+                )
                 # create model and trainer
-                model, trainer = plmodel_setup(checkpoint_path, args.eval_trim_beats, args.dbn, args.gpu)
+                model, trainer = plmodel_setup(
+                    checkpoint_path, args.eval_trim_beats, args.dbn, args.gpu
+                )
                 # predict
                 metrics, dataset, preds, piece = compute_predictions(
-                    model, trainer, datamodule.predict_dataloader())
+                    model, trainer, datamodule.predict_dataloader()
+                )
                 all_piece_metrics.append(metrics)
                 all_piece_dataset.append(dataset)
                 all_piece.append(piece)
             # aggregate across folds
-            all_piece_metrics = {k: np.concatenate(
-                [m[k] for m in all_piece_metrics]) for k in all_piece_metrics[0]}
+            all_piece_metrics = {
+                k: np.concatenate([m[k] for m in all_piece_metrics])
+                for k in all_piece_metrics[0]
+            }
             all_piece_dataset = np.concatenate(all_piece_dataset)
             all_piece = np.concatenate(all_piece)
             # double check that there are no errors in the fold and there are not repeated pieces
-            assert len(all_piece) == len(np.unique(all_piece)
-                                         ), "There are repeated pieces in the folds"
-            dataset_metrics = {k: {d: np.mean(v[all_piece_dataset == d]) for d in np.unique(
-                all_piece_dataset)} for k, v in all_piece_metrics.items()}
+            assert len(all_piece) == len(
+                np.unique(all_piece)
+            ), "There are repeated pieces in the folds"
+            dataset_metrics = {
+                k: {
+                    d: np.mean(v[all_piece_dataset == d])
+                    for d in np.unique(all_piece_dataset)
+                }
+                for k, v in all_piece_metrics.items()
+            }
             # create a dataframe with the dataset_metrics
             dataset_metrics_df = pd.DataFrame(dataset_metrics)
             # print for dataset
@@ -112,30 +139,30 @@ def main(args):
                     print(f"{d}: {value}")
                 print("------")
         else:
-            raise ValueError(
-                f"Unknown aggregation type {args.aggregation_type}")
+            raise ValueError(f"Unknown aggregation type {args.aggregation_type}")
 
 
 def datamodule_setup(checkpoint_path, num_workers, datasplit):
     # Load the datamodule
     print("Creating datamodule")
-    data_dir = Path(__file__).parent.parent.relative_to(Path.cwd()) / 'data'
+    data_dir = Path(__file__).parent.parent.relative_to(Path.cwd()) / "data"
     if str(checkpoint_path) in CHECKPOINT_URL:
         checkpoint_path = CHECKPOINT_URL[checkpoint_path]
     if str(checkpoint_path).startswith("https://"):
         datamodule_hparams = torch.hub.load_state_dict_from_url(checkpoint_path)[
-        'datamodule_hyper_parameters']
+            "datamodule_hyper_parameters"
+        ]
     else:
-        datamodule_hparams = torch.load(checkpoint_path, map_location='cpu')[
-        'datamodule_hyper_parameters']
+        datamodule_hparams = torch.load(checkpoint_path, map_location="cpu")[
+            "datamodule_hyper_parameters"
+        ]
     # update the hparams with the ones from the arguments
     if num_workers is not None:
         datamodule_hparams["num_workers"] = num_workers
     datamodule_hparams["predict_datasplit"] = datasplit
     datamodule_hparams["data_dir"] = data_dir
     datamodule = BeatDataModule(**datamodule_hparams)
-    datamodule.setup(stage='test' if datasplit ==
-                     'test' else 'fit')
+    datamodule.setup(stage="test" if datasplit == "test" else "fit")
     return datamodule
 
 
@@ -155,18 +182,19 @@ def plmodel_setup(checkpoint_path, eval_trim_beats, dbn, gpu):
     """
     model_hparams = {}
     if eval_trim_beats is not None:
-        model_hparams['eval_trim_beats'] = eval_trim_beats
+        model_hparams["eval_trim_beats"] = eval_trim_beats
     if dbn is not None:
-        model_hparams['use_dbn'] = dbn
+        model_hparams["use_dbn"] = dbn
 
     if checkpoint_path in CHECKPOINT_URL:
         checkpoint_path = CHECKPOINT_URL[checkpoint_path]
-    model = PLBeatThis.load_from_checkpoint(checkpoint_path, map_location='cpu',
-                                            **model_hparams)
+    model = PLBeatThis.load_from_checkpoint(
+        checkpoint_path, map_location="cpu", **model_hparams
+    )
     # set correct device and accelerator
     if gpu >= 0:
         devices = [gpu]
-        accelerator = 'gpu'
+        accelerator = "gpu"
     else:
         devices = 1
         accelerator = "cpu"
@@ -176,7 +204,7 @@ def plmodel_setup(checkpoint_path, eval_trim_beats, dbn, gpu):
         devices=devices,
         logger=None,
         deterministic=True,
-        precision='16-mixed',
+        precision="16-mixed",
     )
     return model, trainer
 
@@ -196,23 +224,34 @@ def compute_predictions(model, trainer, predict_dataloader):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Computes predictions for a given model and dataset, "
-        "prints metrics, and optionally dumps predictions to a given file.")
-    parser.add_argument("--models", type=str,
-                        nargs='+',
-                        required=True,
-                        help="Local checkpoint files to use")
-    parser.add_argument("--datasplit", type=str,
-                        choices=("train", "val", "test"),
-                        default="val",
-                        help="data split to use: train, val or test "
-                        "(default: %(default)s)")
+        "prints metrics, and optionally dumps predictions to a given file."
+    )
+    parser.add_argument(
+        "--models",
+        type=str,
+        nargs="+",
+        required=True,
+        help="Local checkpoint files to use",
+    )
+    parser.add_argument(
+        "--datasplit",
+        type=str,
+        choices=("train", "val", "test"),
+        default="val",
+        help="data split to use: train, val or test " "(default: %(default)s)",
+    )
     parser.add_argument("--gpu", type=int, default=0)
-    parser.add_argument("--num_workers", type=int, default=8,
-                        help="number of data loading workers ")
-    parser.add_argument("--eval_trim_beats", metavar="SECONDS",
-                        type=float, default=None,
-                        help="Override whether to skip the first given seconds "
-                        "per piece in evaluating (default: as stored in model)")
+    parser.add_argument(
+        "--num_workers", type=int, default=8, help="number of data loading workers "
+    )
+    parser.add_argument(
+        "--eval_trim_beats",
+        metavar="SECONDS",
+        type=float,
+        default=None,
+        help="Override whether to skip the first given seconds "
+        "per piece in evaluating (default: as stored in model)",
+    )
     parser.add_argument(
         "--dbn",
         default=None,

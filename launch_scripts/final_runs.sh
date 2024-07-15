@@ -21,18 +21,16 @@ train_seed() {
 			break
 		fi
 	done
-	lockdir="$outdir/$name"
-	mkdir -p "$lockdir"
 	if [ -z "$fold" ]; then
 		echo "$name, seed=$seed"
-		lockfile="$lockdir/$seed.lock"
+		lockfile="$outdir/$name S$seed"
 	else
 		echo "$name, seed=$seed, fold=$fold"
-		lockfile="$lockdir/$seed.$fold.lock"
+		lockfile="$outdir/$name S$seed fold$fold"
 	fi
-	if [ ! -f "$lockfile" ]; then
-		echo "$HOSTNAME: $CUDA_VISIBLE_DEVICES" > "$lockfile"
-		JBT_SEED=$seed python3 "$here"/train.py --logger wandb --comment "$name" "${@:3}" && echo "success" >> "$lockfile" || echo "failed" >> "$lockfile"
+	if [ ! -f "$lockfile"*.ckpt ] && [ ! -f "$lockfile.lock" ]; then
+		echo "$HOSTNAME: $CUDA_VISIBLE_DEVICES" > "$lockfile.lock"
+		python3 "$here"/train.py --logger wandb --name "$name --seed $seed" "${@:3}" && rm "$lockfile.lock" || echo "failed" >> "$lockfile.lock"
 	fi
 }
 
@@ -72,10 +70,7 @@ train "no-pitch" $input $augments $model $loss $training "--augmentations=tempo(
 train "no-tempo" $input $augments $model $loss $training "--augmentations=pitch(-5,+6)"
 
 # removing span masking
-train "no-spanmask" $input $augments $model $loss $training "--frontend_augmentations="
-
-# using masked BCE instead of shift-tolerant BCE
-train "masked-bce" $input $augments $model $training "--loss=beat:BCE_pos(0,0);beat:BCE_neg(0,3);downbeat:BCE_pos(0,0);downbeat:BCE_neg(0,3)" --widen_target_mask_loss=7 --compute_pos_weight
+train "no-mask" $input $augments $model $loss $training "--frontend_augmentations="
 
 # using plain BCE
 train "plain-bce" $input $augments $model $training "--loss=beat:BCE_pos(0,0);beat:BCE_neg(0,0);downbeat:BCE_pos(0,0);downbeat:BCE_neg(0,0)" --widen_target_mask_loss=0 --compute_pos_weight
@@ -84,7 +79,7 @@ train "plain-bce" $input $augments $model $training "--loss=beat:BCE_pos(0,0);be
 train "plain-bce-no-posweight" $input $augments $model $training "--loss=beat:BCE_pos(0,0);beat:BCE_neg(0,0);downbeat:BCE_pos(0,0);downbeat:BCE_neg(0,0)" --widen_target_mask_loss=0 --manual_pos_weight=beat:1,downbeat:1
 
 # using standard task heads
-train "no-hsum" $input $augments $model $loss $training --task_heads="*:Linear"
+train "no-sum-head" $input $augments $model $loss $training --task_heads="*:Linear"
 
 # removing the frontend transformers
 train "no-frontend-tf" $input $augments $model $loss $training --extra_frontend="CustomConv2d(1,C,32,4,3,s,4,BN,gelu,C,64,2,3,s,2,BN,gelu,C,128,2,3,s,2,BN,gelu,C,256,2,3,s,2,BN,gelu,L)"

@@ -12,8 +12,10 @@ from pathlib import Path
 from beat_this.dataset.dataset import BeatDataModule
 from beat_this.model.pl_module import PLBeatThis
 
+
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--name", type=str, default="")
     parser.add_argument("--gpu", type=int, default=0)
     parser.add_argument(
         "--force-flash-attention", default=False, action=argparse.BooleanOptionalAction
@@ -155,8 +157,6 @@ def main():
         help="Seed for the random number generators.",
     )
 
-   
-
     args = parser.parse_args()
 
     # for repeatability
@@ -165,10 +165,9 @@ def main():
     print("Starting a new run with the following parameters:")
     print(args)
 
-    
-    name = f"{'noval ' if not args.val else ''}{'hung ' if args.hung_data else ''}{'fold' + str(args.fold) + ' ' if args.fold is not None else ''}{args.loss}-h{args.transformer_dim}-aug{args.tempo_augmentation}{args.pitch_augmentation}{args.mask_augmentation}{' nosumH ' if not args.sum_head else ''}{' nopartialT ' if not args.partial_transformers else ''}"
+    params_str = f"{'noval ' if not args.val else ''}{'hung ' if args.hung_data else ''}{'fold' + str(args.fold) + ' ' if args.fold is not None else ''}{args.loss}-h{args.transformer_dim}-aug{args.tempo_augmentation}{args.pitch_augmentation}{args.mask_augmentation}{' nosumH ' if not args.sum_head else ''}{' nopartialT ' if not args.partial_transformers else ''}"
     if args.logger == "wandb":
-        logger = WandbLogger(project="beat_this", name=name)
+        logger = WandbLogger(project="beat_this", name=f"{args.name} {params_str}".strip())
     else:
         logger = None
 
@@ -179,7 +178,9 @@ def main():
         torch.backends.cuda.enable_math_sdp(False)
 
     data_dir = Path(__file__).parent.parent.relative_to(Path.cwd()) / "data"
-    checkpoint_dir =Path(__file__).parent.parent.relative_to(Path.cwd()) / "checkpoints"
+    checkpoint_dir = (
+        Path(__file__).parent.parent.relative_to(Path.cwd()) / "checkpoints"
+    )
     augmentations = {}
     if args.tempo_augmentation:
         augmentations["tempo"] = {"min": -20, "max": 20, "stride": 4}
@@ -248,7 +249,13 @@ def main():
 
     callbacks = [LearningRateMonitor(logging_interval="step")]
     # save only the last model
-    callbacks.append(ModelCheckpoint(every_n_epochs=1, dirpath=str(checkpoint_dir), filename=f"S{args.seed} {name}"))
+    callbacks.append(
+        ModelCheckpoint(
+            every_n_epochs=1,
+            dirpath=str(checkpoint_dir),
+            filename=f"{args.name} S{args.seed} {params_str}".strip(),
+        )
+    )
 
     trainer = Trainer(
         max_epochs=args.max_epochs,
