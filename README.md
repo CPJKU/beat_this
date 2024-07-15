@@ -2,14 +2,14 @@
 Accurate and general beat tracker from the paper ...
 
 ## Available models
-We release 3 main models, which were trained on all data, except the GTZAN dataset, with three different seeds. You can use them with the shortcut `final0`, `final1`, and `final2`. These are the models corresponding to "Our System" on Table 2 on the paper.
+We release 3 main models, which were trained on all data, except the GTZAN dataset, with three different seeds. You can use them with the shortcut `final0`, `final1`, and `final2`. These correspond to "Our System" in Table 2 on the paper.
 
 Please be aware that, as the models ```final*``` was trained on all data except the GTZAN dataset, if you run the inference on some data that was used for training, the results may be unfairly good.
 
-The K-Fold models, and single split from the paper are also available.
+The K-Fold models and single split from the paper are also available.
 
-All the models are provided as pytorch lightning checkpoints, stripped of the optimizer state to reduce their size. This is useful to reproduce the paper results.
-During inference, pytorch lighting is not used, and the checkpoints are converted and loaded into vanilla pytorch modules.
+All the models are provided as pytorch lightning checkpoints, stripped of the optimizer state to reduce their size. This is useful for reproducing the paper results.
+During inference, PyTorch lighting is not used, and the checkpoints are converted and loaded into vanilla PyTorch modules.
 
 ## Inference
 
@@ -52,7 +52,7 @@ a2b = Audio2Beat(model_checkpoint=model_checkpoint, device=device, dbn=use_dbn)
 beat, downbeat = audio2beat(audio_path)
 ```
 
-You can produce a `.beat` file that can be imported in sonic visualizer with the command:
+You can produce a `.beat` file that can be imported into sonic visualizer with the command:
 ```python
 from beat_this.utils import save_beat_csv
 
@@ -68,7 +68,7 @@ python launch_scripts/predict.py --model final0 --audio-path path/to/audio/file 
 ```
 
 Set ```--gpu -1``` if you want to run on cpu.
-You can add ```--dbn``` if you want to use the DBN. The DBN parameters are the default one from madmom.
+You can add ```--dbn``` if you want to use the DBN. The DBN parameters are the default ones from madmom.
 
 
 
