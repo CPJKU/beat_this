@@ -33,9 +33,6 @@ use_dbn = False
 # Device to run the inference on
 device = "cpu"
 
-from beat_this.inference import Audio2Beat
-
-audio2beat = Audio2Beat(model_checkpoint=model_checkpoint, device=device, dbn=use_dbn)
 beat, downbeat = audio2beat(audio_path)
 
 print("Beat positions (in seconds):", beat)
