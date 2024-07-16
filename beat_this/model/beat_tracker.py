@@ -6,8 +6,6 @@ import numpy as np
 from einops.layers.torch import Rearrange
 from torch.distributions.exponential import Exponential
 from rotary_embedding_torch import RotaryEmbedding
-from beartype.typing import Tuple, Optional, List, Callable
-from beartype import beartype
 from einops import rearrange
 
 import beat_this.model.roformer as roformer
