@@ -9,19 +9,7 @@ from beat_this.utils import split_predict_aggregate
 from beat_this.model.beat_tracker import BeatThis
 from beat_this.model.postprocessor import Postprocessor
 
-CHECKPOINT_URL = {
-    "final0": "https://cloud.cp.jku.at/index.php/s/Dbtd47JqzDxWoks/download/final0.ckpt",
-    "final1": "https://cloud.cp.jku.at/index.php/s/DCm9YLkTBAEc4y3/download/final1.ckpt",
-    "final2": "https://cloud.cp.jku.at/index.php/s/E8A3McdxpwSGGwJ/download/final2.ckpt",
-    "fold0": "https://cloud.cp.jku.at/index.php/s/oZrBck4nCZLkkQw/download/fold0.ckpt",
-    "fold1": "https://cloud.cp.jku.at/index.php/s/rDaS9YtiYE6Qyrn/download/fold1.ckpt",
-    "fold2": "https://cloud.cp.jku.at/index.php/s/Z4PHTqD58x3C5dt/download/fold2.ckpt",
-    "fold3": "https://cloud.cp.jku.at/index.php/s/Cmc5wT6KEoHE4mP/download/fold3.ckpt",
-    "fold4": "https://cloud.cp.jku.at/index.php/s/tXz5KsmGrJNkPog/download/fold4.ckpt",
-    "fold5": "https://cloud.cp.jku.at/index.php/s/Mb95SoY2GtMEA3H/download/fold5.ckpt",
-    "fold6": "https://cloud.cp.jku.at/index.php/s/ADxyETzQQ5iGEj9/download/fold6.ckpt",
-    "fold7": "https://cloud.cp.jku.at/index.php/s/jPXq6HqJeeezcqH/download/fold7.ckpt",
-}
+CHECKPOINT_URL = "https://cloud.cp.jku.at/index.php/s/7ik4RrBKTS273gp"
 
 
 def lightning_to_torch(checkpoint: dict):
@@ -62,16 +50,18 @@ def load_model(checkpoint_path: str, device: torch.device):
     model = BeatThis()
     if checkpoint_path is not None:
         try:
-            if checkpoint_path in CHECKPOINT_URL:
-                checkpoint_path = CHECKPOINT_URL[checkpoint_path]
-            if str(checkpoint_path).startswith("https://"):
-                checkpoint = torch.hub.load_state_dict_from_url(checkpoint_path)
-            else:
-                checkpoint = torch.load(checkpoint_path, map_location="cpu")
-        except Exception as e:
-            raise ValueError(
-                "Could not load the checkpoint given the provided name", checkpoint_path
-            )
+            # try interpreting as local file name
+            checkpoint = torch.load(checkpoint_path, map_location=device)
+        except FileNotFoundError:
+            try:
+                if not str(checkpoint_path).startswith("https://") or str(checkpoint_path).startswith("http://"):
+                    # interpret it as a name of one of our checkpoints
+                    checkpoint_path = f"{CHECKPOINT_URL}/download?path=%2F&files={checkpoint_path}.ckpt"
+                checkpoint = torch.hub.load_state_dict_from_url(checkpoint_path, map_location=device)
+            except Exception as e:
+                raise ValueError(
+                    "Could not load the checkpoint given the provided name", checkpoint_path
+                )
         # modify the checkpoint to remove the prefix "model.", so we can load a lightning module checkpoint in pure pytorch
         checkpoint = lightning_to_torch(checkpoint)
         model.load_state_dict(checkpoint["state_dict"])
