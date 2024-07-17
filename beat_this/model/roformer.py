@@ -14,18 +14,6 @@ from einops import rearrange, pack, unpack
 def exists(val):
     return val is not None
 
-def default(v, d):
-    return v if exists(v) else d
-
-def pack_one(t, pattern):
-    return pack([t], pattern)
-
-def unpack_one(t, ps, pattern):
-    return unpack(t, ps, pattern)[0]
-
-def l2norm(t):
-    return F.normalize(t, dim = -1, p = 2)
-
 # norm
 
 class RMSNorm(Module):
