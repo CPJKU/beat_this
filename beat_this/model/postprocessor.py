@@ -2,7 +2,6 @@ import torch
 import numpy as np
 from einops import pack, unpack, rearrange
 import torch.nn.functional as F
-from madmom.features.downbeats import DBNDownBeatTrackingProcessor
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, Tuple
 
@@ -25,6 +24,7 @@ class Postprocessor:
         self.type = type
         self.fps = fps
         if type == "dbn":
+            from madmom.features.downbeats import DBNDownBeatTrackingProcessor
             self.dbn = DBNDownBeatTrackingProcessor(beats_per_bar=[3, 4], min_bpm=55.0, max_bpm=215.0, fps=self.fps, transition_lambda=100, )
     
 

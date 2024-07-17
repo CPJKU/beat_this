@@ -35,7 +35,7 @@ if __name__ == "__main__":
         help="Path to the audio file to process",
     )
     parser.add_argument(
-        "--model", type=str, required=True, help="Checkpoint to use", default="final0"
+        "--model", type=str, help="Checkpoint to use", default="final0"
     )
     parser.add_argument(
         "--output_path",
