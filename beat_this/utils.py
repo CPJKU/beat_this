@@ -94,14 +94,15 @@ def aggregate_prediction(
     Returns:
         tuple: A tuple containing the aggregated beat predictions and downbeat predictions as torch tensors for the whole piece.
     """
-    # cut the predictions to discard the border
-    pred_chunks = [
-        {
-            "beat": pchunk["beat"][border_size:-border_size],
-            "downbeat": pchunk["downbeat"][border_size:-border_size],
-        }
-        for pchunk in pred_chunks
-    ]
+    if border_size > 0:
+        # cut the predictions to discard the border
+        pred_chunks = [
+            {
+                "beat": pchunk["beat"][border_size:-border_size],
+                "downbeat": pchunk["downbeat"][border_size:-border_size],
+            }
+            for pchunk in pred_chunks
+        ]
     # aggregate the predictions for the whole piece
     piece_prediction_beat = torch.full((full_size,), -1000.0, device=device)
     piece_prediction_downbeat = torch.full((full_size,), -1000.0, device=device)
