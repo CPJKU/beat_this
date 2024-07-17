@@ -1,5 +1,5 @@
 import torch
-import librosa
+import soxr
 import numpy as np
 import torch.nn as nn
 from typing import Tuple
@@ -131,14 +131,13 @@ class Audio2Frames(Spect2Frames):
 
     def __init__(self, model_checkpoint_path="final0", device="cpu"):
         super().__init__(model_checkpoint_path, device)
-        self.device = torch.device(device)
 
     def __call__(self, audio_path):
         waveform, audio_sr = load_audio(audio_path)
         if waveform.ndim != 1:
             waveform = np.mean(waveform, axis=1)
         if audio_sr != 22050:
-            waveform = librosa.resample(waveform, orig_sr=audio_sr, target_sr=22050)
+            waveform = soxr.resample(waveform, in_rate=audio_sr, out_rate=22050)
         waveform = torch.tensor(waveform, dtype=torch.float32, device=self.device)
         spect = LogMelSpect(device=self.device)(waveform)
         return super().__call__(spect)
