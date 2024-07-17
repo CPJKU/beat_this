@@ -7,7 +7,7 @@ from beat_this.inference import audio2beat, load_model
 
 
 def main(audio_path, modelfile, dbn, outpath, gpu):
-    if gpu >= 0:
+    if torch.cuda.is_available() and gpu >= 0:
         os.environ["CUDA_VISIBLE_DEVICES"] = str(
             gpu
         )  # this is necessary to avoid a bug which causes pytorch to not see any GPU in some systems
