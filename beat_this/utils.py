@@ -208,10 +208,13 @@ def save_beat_csv(beats: np.ndarray, downbeats: np.ndarray, outpath: str) -> Non
     counter = start_counter
     # write the beat file
     Path(outpath).parent.mkdir(parents=True, exist_ok=True)
-    with open(outpath, "w") as f:
-        for beat in beats:
-            if beat in downbeats:
-                counter = 1
-            else:
-                counter += 1
-            f.write(str(beat) + "\t" + str(counter) + "\n")
+    try:
+        with open(outpath, "w") as f:
+            for beat in beats:
+                if beat in downbeats:
+                    counter = 1
+                else:
+                    counter += 1
+                f.write(str(beat) + "\t" + str(counter) + "\n")
+    except KeyboardInterrupt:
+        outpath.unlink()  # avoid half-written files
