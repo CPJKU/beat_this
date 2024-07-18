@@ -1,11 +1,3 @@
-try:
-    import soundfile as sf
-except ImportError:
-    sf = None
-try:
-    import madmom
-except ImportError:
-    madmom = None
 import numpy as np
 import torchaudio
 import torch
@@ -19,10 +11,15 @@ def load_audio(path, dtype="float64"):
     except Exception:
         # in case torchaudio fails, try soundfile
         try:
+            import soundfile as sf
             return sf.read(path, dtype=dtype)
         except Exception:
             # some files are not readable by soundfile, try madmom
-            return madmom.io.load_audio_file(str(path), dtype=dtype)
+            try:
+                import madmom
+                return madmom.io.load_audio_file(str(path), dtype=dtype)
+            except Exception:
+                raise RuntimeError(f"Could not load audio from \"{path}\".")
 
 
 class LogMelSpect(torch.nn.Module):
