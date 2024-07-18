@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 with open(os.path.join(os.path.dirname(__file__), 'README.md')) as f:
     long_description = f.read()
 setup(
-    name="beat_this",
+    name="beat-this",
     version="0.1",
     description="Beat This! beat tracker",
     long_description=long_description,
