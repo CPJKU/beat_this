@@ -100,7 +100,7 @@ class Audio2Frames(Spect2Frames):
         super().__init__(checkpoint_path, device)
         self.spect = LogMelSpect(device=self.device)
 
-    def __call__(self, audio_path=None, audio_signal=None, sr=None):
+    def __call__(self, audio_path):
         waveform, audio_sr = load_audio(audio_path)
         if waveform.ndim != 1:
             waveform = np.mean(waveform, axis=1)
