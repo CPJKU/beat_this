@@ -68,29 +68,6 @@ def load_model(checkpoint_path: str, device: torch.device):
     return model.to(device)
 
 
-def audio2beat(
-    audio_path,
-    model_checkpoint: str = "final0",
-    dbn: bool = False,
-    device: torch.device = "cpu",
-) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Extract beat and downbeat positions (in seconds) from an audio file.
-
-    Args:
-        audio_path (str): The path to the audio file.
-        model (str): The model checkpoint to use. Can be a local path, a URL, or a key in MODELS_URL. Default is "final0".
-        dbn (bool): Whether to use the DBN postprocessor. Default is False.
-        device (torch.device): The device to use for inference. Default is "cpu".
-
-    Returns:
-        tuple: A tuple containing two np.ndarray with beat and downbeat positions in seconds.
-
-    """
-    a2b = Audio2Beat(model_checkpoint, device, dbn)
-    return a2b(audio_path)
-
-
 class Spect2Frames:
     """
     Class for extracting framewise beat and downbeat predictions (logits) from a spectrogram.
