@@ -1,62 +1,165 @@
 #!/usr/bin/env python3
-import os
+import sys
 import argparse
+from pathlib import Path
+
+try:
+    import tqdm
+except ImportError:
+    tqdm = None
 import torch
+from beat_this.utils import save_beat_tsv
+from beat_this.inference import Audio2Beat
 
-from beat_this.utils import save_beat_csv
-from beat_this.inference import audio2beat, load_model
+
+def process_file(audio2beat, item, output):
+    beats, downbeats = audio2beat(item)
+    save_beat_tsv(beats, downbeats, output)
 
 
-def main(audio_path, modelfile, dbn, outpath, gpu):
+def derive_output_path(input_path, suffix, append, output=None, parent=None):
+    """
+    Determine the output file name for `input_path` using the given
+    suffix. If given, `output` is the base directory for outputs, and
+    `parent` is the directory that was given on the command line.
+    """
+    # output directory
+    if output is None:
+        output_path = input_path
+    else:
+        if parent is not None:
+            input_path = input_path.relative_to(parent)
+        else:
+            input_path = input_path.name
+        output_path = output / input_path
+    # suffix
+    if append:
+        return output_path.parent / (output_path.name + suffix)
+    else:
+        return output_path.with_suffix(suffix)
+
+
+def main(inputs, model, output, suffix, append, skip_existing, touch_first, dbn, gpu):
+    # determine device
     if torch.cuda.is_available() and gpu >= 0:
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(
-            gpu
-        )  # this is necessary to avoid a bug which causes pytorch to not see any GPU in some systems
-        torch.cuda.device_count.cache_clear()
-        device = torch.device("cuda")
+        device = torch.device(f"cuda:{gpu}")
     else:
         device = torch.device("cpu")
 
-    # model = load_model(modelfile, device)
+    # prepare model
+    audio2beat = Audio2Beat(model, device, dbn)
 
-    beat, downbeat = audio2beat(audio_path, modelfile, dbn, device)
-    print("Saving predictions...")
-    save_beat_csv(beat, downbeat, outpath)
-    print(f"Done, saved in {outpath}")
+    # process inputs
+    inputs = [Path(item) for item in inputs]
+    if output is not None:
+        output = Path(output)
+    if len(inputs) == 1 and not inputs[0].is_dir():
+        # special case: single input file
+        if output is None or output.is_dir():
+            output = derive_output_path(inputs[0], suffix, append, output)
+        process_file(audio2beat, inputs[0], output)
+    else:
+        # multiple inputs: first collect tasks so we can have a progress bar
+        tasks = []
+        for item in inputs:
+            if item.is_dir():
+                for fn in item.rglob("*"):
+                    if not fn.name.endswith(suffix) and not fn.is_dir():
+                        output_path = derive_output_path(
+                            fn, suffix, append, output, parent=item
+                        )
+                        if not skip_existing or not output_path.exists():
+                            tasks.append((fn, output_path))
+            else:
+                tasks.append((fn, derive_output_path(fn, suffix, append, output)))
+        # then process all of them
+        if tqdm is not None:
+            tasks = tqdm.tqdm(tasks)
+        for item, output in tasks:
+            if touch_first:
+                try:
+                    outpath.touch(exist_ok=not skip_existing)
+                except FileExistsError:
+                    continue
+            elif skip_existing and outpath.exists():
+                continue
+            try:
+                process_file(audio2beat, item, output)
+            except Exception:
+                print(
+                    f'Could not process "{item}". Rerun with this file alone for details.',
+                    file=sys.stderr,
+                )
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Computes predictions for a given model and a given audio file."
+        description="Detects beats in given audio files with a Beat This! model."
     )
     parser.add_argument(
-        "--audio-path",
+        "inputs",
         type=str,
-        required=True,
-        help="Path to the audio file to process",
+        nargs="+",
+        help="An audio file to process, or a directory of such files. Can be given multiple times.",
     )
     parser.add_argument(
-        "--model", type=str, help="Checkpoint to use", default="final0"
-    )
-    parser.add_argument(
-        "--output_path",
+        "--model",
         type=str,
-        default="test_output.beat",
-        help="where to save the .beat file containing beat and downbeat predictions",
+        help="Name, path or URL of checkpoint to use, will be downloaded if needed (default:%(default)s).",
+        default="final0",
     )
     parser.add_argument(
-        "--gpu",
-        type=int,
-        default=0,
-        help="which gpu to use (not the number of GPUs), if any. -1 for cpu. Default is 0.",
+        "--output",
+        "-o",
+        type=str,
+        default=None,
+        help="Output file name for a single input file, or output directory for multiple input files. If omitted, outputs are saved next to each input file by replacing or appending a suffix (see --suffix and --append).",
+    )
+    parser.add_argument(
+        "--suffix",
+        "-s",
+        type=str,
+        default=".beats.txt",
+        help="Suffix for output file names (default: %(default)s). Also see --append. Ignored if an explicit output file name is given.",
+    )
+    parser.add_argument(
+        "--append",
+        action="store_true",
+        help="If given, append suffix to output file names instead of replacing the existing suffix. Ignored if an explicit output file name is given.",
+    )
+    parser.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help="If given, do not overwrite existing output files, but skip them.",
+    )
+    parser.add_argument(
+        "--touch-first",
+        action="store_true",
+        help="If given, create empty output file before processing. Combined with --skip-existing, allows to run multiple processes in parallel on the same set of files.",
     )
     parser.add_argument(
         "--dbn",
         default=False,
         action=argparse.BooleanOptionalAction,
-        help="override the option to use madmom postprocessing dbn",
+        help="Override the option to use madmom's postprocessing DBN.",
+    )
+    parser.add_argument(
+        "--gpu",
+        type=int,
+        default=0,
+        help="Which GPU to use (not the number of GPUs), or -1 for CPU. Ignored if CUDA is not available. (default: %(default)s)",
     )
 
     args = parser.parse_args()
 
-    main(args.audio_path, args.model, args.dbn, args.output_path, args.gpu)
+    main(
+        args.inputs,
+        args.model,
+        args.output,
+        args.suffix,
+        args.append,
+        args.skip_existing,
+        args.touch_first,
+        args.dbn,
+        args.gpu,
+    )
