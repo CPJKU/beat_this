@@ -98,6 +98,7 @@ class Audio2Frames(Spect2Frames):
 
     def __init__(self, checkpoint_path="final0", device="cpu"):
         super().__init__(checkpoint_path, device)
+        self.spect = LogMelSpect(device=self.device)
 
     def __call__(self, audio_path=None, audio_signal=None, sr=None):
         waveform, audio_sr = load_audio(audio_path)
@@ -106,7 +107,7 @@ class Audio2Frames(Spect2Frames):
         if audio_sr != 22050:
             waveform = soxr.resample(waveform, in_rate=audio_sr, out_rate=22050)
         waveform = torch.tensor(waveform, dtype=torch.float32, device=self.device)
-        spect = LogMelSpect(device=self.device)(waveform)
+        spect = self.spect(waveform)
         return super().__call__(spect)
 
 
