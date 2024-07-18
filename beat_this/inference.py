@@ -35,13 +35,13 @@ def lightning_to_torch(checkpoint: dict):
     return checkpoint
 
 
-def load_model(checkpoint_path: str, device: torch.device):
+def load_model(checkpoint_path: str | None = "final0", device: str | torch.device = "cpu"):
     """
     Load a BeatThis model from a checkpoint.
 
     Args:
-        checkpoint_path (str): The path to the checkpoint. Can be a local path, a URL, or a key in MODELS_URL.
-        device (torch.device): The device to load the model on.
+        checkpoint_path (str, optional): The path to the checkpoint. Can be a local path, a URL, or a shortname.
+        device (torch.device or str): The device to load the model on.
 
     Returns:
         BeatThis: The loaded model.
@@ -73,14 +73,14 @@ class Spect2Frames:
     Class for extracting framewise beat and downbeat predictions (logits) from a spectrogram.
     """
 
-    def __init__(self, model_checkpoint_path="final0", device="cpu"):
+    def __init__(self, checkpoint_path="final0", device="cpu"):
         super().__init__()
         self.device = torch.device(device)
-        self.model = load_model(model_checkpoint_path, self.device)
+        self.model = load_model(checkpoint_path, self.device)
         self.model.eval()
 
     def __call__(self, spect):
-        with torch.no_grad():
+        with torch.inference_mode():
             model_prediction = split_predict_aggregate(
                 spect=spect,
                 chunk_size=1500,
@@ -93,13 +93,13 @@ class Spect2Frames:
 
 class Audio2Frames(Spect2Frames):
     """
-    Class for extracting framewise beat and downbeat predictions (logits) from an audio file.
+    Class for extracting framewise beat and downbeat predictions (logits) from an audio tensor or audio file.
     """
 
-    def __init__(self, model_checkpoint_path="final0", device="cpu"):
-        super().__init__(model_checkpoint_path, device)
+    def __init__(self, checkpoint_path="final0", device="cpu"):
+        super().__init__(checkpoint_path, device)
 
-    def __call__(self, audio_path):
+    def __call__(self, audio_path=None, audio_signal=None, sr=None):
         waveform, audio_sr = load_audio(audio_path)
         if waveform.ndim != 1:
             waveform = np.mean(waveform, axis=1)
@@ -115,13 +115,13 @@ class Audio2Beat(Audio2Frames):
     Class for extracting beat and downbeat positions (in seconds) from an audio files.
 
     Args:
-        model_checkpoint_path (str): Path to the model checkpoint file. It can be a local path, a URL, or a key from the CHECKPOINT_URL dictionary. Default is "final0", which will load the model trained on all data except GTZAN with seed 0.
+        checkpoint_path (str): Path to the model checkpoint file. It can be a local path, a URL, or a key from the CHECKPOINT_URL dictionary. Default is "final0", which will load the model trained on all data except GTZAN with seed 0.
         device (str): Device to use for inference. Default is "cpu".
         dbn (bool): Whether to use the madmom DBN for post-processing. Default is False.
     """
 
-    def __init__(self, model_checkpoint_path="final0", device="cpu", dbn=False):
-        super().__init__(model_checkpoint_path, device)
+    def __init__(self, checkpoint_path="final0", device="cpu", dbn=False):
+        super().__init__(checkpoint_path, device)
         self.device = torch.device(device)
         self.postprocessor = Postprocessor(type="dbn" if dbn else "minimal")
 

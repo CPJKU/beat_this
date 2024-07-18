@@ -55,7 +55,7 @@ If you are a Python user, you can directly use the `beat_this.inference` module.
 First, instantiate an instance of the `Audio2Beat` class that encapsulates the model along with pre- and postprocessing:
 ```python
 from beat_this.inference import Audio2Beat
-audio2beat = Audio2Beat(model_checkpoint="final0", device="cuda", dbn=False)
+audio2beat = Audio2Beat(checkpoint_path="final0", device="cuda", dbn=False)
 ```
 To obtain a list of beats and downbeats for an audio file, run:
 ```python

@@ -10,11 +10,11 @@ from beat_this.inference import Audio2Beat
 def beat_this_audio2beat(pretrained=True, device='cuda') -> Audio2Beat:
     """ Load pretrained audio to beat model. """
     if pretrained:
-        model_checkpoint_path = "final0"
+        checkpoint_path = "final0"
     else:
-        model_checkpoint_path = None
+        checkpoint_path = None
     device = torch.device(device)
-    return Audio2Beat(model_checkpoint_path, device)
+    return Audio2Beat(checkpoint_path, device)
 
 if __name__ == "__main__":
     model = beat_this_audio2beat()
