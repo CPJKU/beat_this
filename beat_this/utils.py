@@ -1,4 +1,5 @@
 from pathlib import Path
+from itertools import chain
 import torch
 import torch.nn.functional as F
 import numpy as np
@@ -165,15 +166,16 @@ def split_predict_aggregate(
     return {"beat": piece_prediction_beat, "downbeat": piece_prediction_downbeat}
 
 
-def save_beat_csv(beats: np.ndarray, downbeats: np.ndarray, outpath: str) -> None:
+def save_beat_tsv(beats: np.ndarray, downbeats: np.ndarray, outpath: str) -> None:
     """
-    Save beat information to a csv file in the standard .beat format.
-    The class assume that all downbeats are also beats.
+    Save beat information to a tab-separated file in the standard .beats format:
+    each line has a time in seconds, a tab, and a beat number (1 = downbeat).
+    The function requires that all downbeats are also listed as beats.
 
     Args:
-        beats (numpy.ndarray): Array of beat positions in seconds.
+        beats (numpy.ndarray): Array of beat positions in seconds (including downbeats).
         downbeats (numpy.ndarray): Array of downbeat positions in seconds.
-        outpath (str): Path to the output CSV file.
+        outpath (str): Path to the output TSV file.
 
     Returns:
         None
@@ -182,39 +184,40 @@ def save_beat_csv(beats: np.ndarray, downbeats: np.ndarray, outpath: str) -> Non
     if not np.all(np.isin(downbeats, beats)):
         raise ValueError("Not all downbeats are beats.")
 
-    # handle pickup measure, by considering the beat number of the first full measure
-    # find the number of beats between the first two downbeats
-    if len(downbeats) > 2:
-        beat_in_first_measure = beats[
-            (beats < downbeats[1]) & (beats >= downbeats[0])
-        ].shape[0]
-        # find the number of pickup beats
-        pickup_beats = beats[beats < downbeats[0]].shape[0]
-        if pickup_beats < beat_in_first_measure:
-            start_counter = beat_in_first_measure - pickup_beats
+    # handle pickup measure, by considering the beat count of the first full measure
+    if len(downbeats) >= 2:
+        # find the number of beats between the first two downbeats
+        first_downbeat, second_downbeat = np.searchsorted(beats, downbeats[:2])
+        beats_in_first_measure = second_downbeat - first_downbeat
+        # find the number of beats before the first downbeat
+        pickup_beats = first_downbeat
+        # derive where to start counting
+        if pickup_beats < beats_in_first_measure:
+            start_counter = beats_in_first_measure - pickup_beats
         else:
             print(
                 "WARNING: There are more pickup beats than beats in the first measure. This should not happen. The pickup measure will be considered as a normal measure."
             )
-            pickup_beats = 0
-            beat_in_first_measure = 0
-            counter = 0
+            start_counter = 0
     else:
         print(
             "WARNING: There are less than two downbeats in the predictions. Something may be wrong. No pickup measure will be considered."
         )
         start_counter = 0
 
-    counter = start_counter
     # write the beat file
     Path(outpath).parent.mkdir(parents=True, exist_ok=True)
+    counter = start_counter
+    downbeats = chain(downbeats, [-1])
+    next_downbeat = next(downbeats)
     try:
         with open(outpath, "w") as f:
             for beat in beats:
-                if beat in downbeats:
+                if beat == next_downbeat:
                     counter = 1
+                    next_downbeat = next(downbeats)
                 else:
                     counter += 1
-                f.write(str(beat) + "\t" + str(counter) + "\n")
+                f.write(f"{beat}\t{counter}\n")
     except KeyboardInterrupt:
         outpath.unlink()  # avoid half-written files
