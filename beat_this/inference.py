@@ -65,7 +65,7 @@ def load_model(checkpoint_path: str | None = "final0", device: str | torch.devic
         # modify the checkpoint to remove the prefix "model.", so we can load a lightning module checkpoint in pure pytorch
         checkpoint = lightning_to_torch(checkpoint)
         model.load_state_dict(checkpoint["state_dict"])
-    return model.to(device)
+    return model.to(device).eval()
 
 
 class Spect2Frames:
