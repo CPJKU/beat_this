@@ -18,7 +18,7 @@ setup(
         "torch>=2",
         "torchaudio",
         "einops",
-        "rotary_embedding_torch",
+        "rotary-embedding-torch",
         "soxr",
     ],
     python_requires='>=3',
