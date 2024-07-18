@@ -98,6 +98,6 @@ python launch_scripts/compute_paper_metrics.py --aggregation-type k-fold --model
     year = 2024,
     month = nov,
     booktitle = {Proceedings of the 25th International Society for Music Information Retrieval Conference (ISMIR)},
-	address = {San Francisco, CA, United States},
+    address = {San Francisco, CA, United States},
 }
 ```
