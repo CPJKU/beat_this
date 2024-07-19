@@ -78,10 +78,10 @@ def main(inputs, model, output, suffix, append, skip_existing, touch_first, dbn,
         for item, output in tasks:
             if touch_first:
                 try:
-                    outpath.touch(exist_ok=not skip_existing)
+                    output.touch(exist_ok=not skip_existing)
                 except FileExistsError:
                     continue
-            elif skip_existing and outpath.exists():
+            elif skip_existing and output.exists():
                 continue
             try:
                 process_file(audio2beat, item, output)
