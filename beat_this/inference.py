@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 import soxr
 import numpy as np
 
@@ -232,15 +233,17 @@ class Audio2Frames(Spect2Frames):
         self.spect = LogMelSpect(device=self.device)
 
     def signal2spect(self, signal, sr):
-        if signal.ndim != 1:
-            signal = signal.mean(range(1, signal.ndim))
+        if signal.ndim == 2:
+            signal = signal.mean(1)
+        elif signal.ndim != 1:
+            raise ValueError(f"Expected 1D or 2D signal, got shape {signal.shape}")
         if sr != 22050:
             signal = soxr.resample(signal, in_rate=sr, out_rate=22050)
         signal = torch.tensor(signal, dtype=torch.float32, device=self.device)
         return self.spect(signal)
 
     def __call__(self, signal, sr):
-        spect = super()(signal, sr)
+        spect = self.signal2spect(signal, sr)
         return self.spect2frames(spect)
 
 
@@ -259,16 +262,17 @@ class Audio2Beats(Audio2Frames):
         self.frames2beats = Postprocessor(type="dbn" if dbn else "minimal")
 
     def __call__(self, signal, sr):
-        beat_logits, downbeat_logits = super()(signal, sr)
+        beat_logits, downbeat_logits = super().__call__(signal, sr)
         return self.frames2beats(beat_logits, downbeat_logits)
 
 
 class File2Beats(Audio2Beats):
     def __call__(self, audio_path):
-        return super()(load_audio(audio_path))
+        signal, sr = load_audio(audio_path)
+        return super().__call__(signal, sr)
 
 
 class File2File(File2Beats):
     def __call__(self, audio_path, output_path):
-        downbeats, beats = super()(audio_path)
+        downbeats, beats = super().__call__(audio_path)
         save_beat_tsv(downbeats, beats, output_path)

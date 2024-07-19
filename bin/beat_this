@@ -8,13 +8,7 @@ try:
 except ImportError:
     tqdm = None
 import torch
-from beat_this.utils import save_beat_tsv
-from beat_this.inference import Audio2Beat
-
-
-def process_file(audio2beat, item, output):
-    beats, downbeats = audio2beat(item)
-    save_beat_tsv(beats, downbeats, output)
+from beat_this.inference import File2File
 
 
 def derive_output_path(input_path, suffix, append, output=None, parent=None):
@@ -47,7 +41,7 @@ def main(inputs, model, output, suffix, append, skip_existing, touch_first, dbn,
         device = torch.device("cpu")
 
     # prepare model
-    audio2beat = Audio2Beat(model, device, dbn)
+    file2file = File2File(model, device, dbn)
 
     # process inputs
     inputs = [Path(item) for item in inputs]
@@ -57,7 +51,7 @@ def main(inputs, model, output, suffix, append, skip_existing, touch_first, dbn,
         # special case: single input file
         if output is None or output.is_dir():
             output = derive_output_path(inputs[0], suffix, append, output)
-        process_file(audio2beat, inputs[0], output)
+        file2file(inputs[0], output)
     else:
         # multiple inputs: first collect tasks so we can have a progress bar
         tasks = []
@@ -84,7 +78,7 @@ def main(inputs, model, output, suffix, append, skip_existing, touch_first, dbn,
             elif skip_existing and output.exists():
                 continue
             try:
-                process_file(audio2beat, item, output)
+                file2file(item, output)
             except Exception:
                 print(
                     f'Could not process "{item}". Rerun with this file alone for details.',
