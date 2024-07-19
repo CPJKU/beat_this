@@ -57,17 +57,12 @@ def main(args):
                 args.models[0], args.num_workers, args.datasplit
             )
             # create model and trainer
-            models = []
-            trainers = []
+            all_metrics = []
             for checkpoint_path in args.models:
                 model, trainer = plmodel_setup(
                     checkpoint_path, args.eval_trim_beats, args.dbn, args.gpu
                 )
-                models.append(model)
-                trainers.append(trainer)
-            # predict
-            all_metrics = []
-            for model, trainer in zip(models, trainers):
+
                 metrics, dataset, preds, piece = compute_predictions(
                     model, trainer, datamodule.predict_dataloader()
                 )
@@ -146,16 +141,27 @@ def datamodule_setup(checkpoint_path, num_workers, datasplit):
     # Load the datamodule
     print("Creating datamodule")
     data_dir = Path(__file__).parent.parent.relative_to(Path.cwd()) / "data"
-    if str(checkpoint_path) in CHECKPOINT_URL:
-        checkpoint_path = CHECKPOINT_URL[checkpoint_path]
-    if str(checkpoint_path).startswith("https://"):
-        datamodule_hparams = torch.hub.load_state_dict_from_url(checkpoint_path)[
-            "datamodule_hyper_parameters"
-        ]
-    else:
+    try:
+        # try interpreting as local file name
         datamodule_hparams = torch.load(checkpoint_path, map_location="cpu")[
             "datamodule_hyper_parameters"
         ]
+    except FileNotFoundError:
+        try:
+            if not (
+                str(checkpoint_path).startswith("https://")
+                or str(checkpoint_path).startswith("http://")
+            ):
+                # interpret it as a name of one of our checkpoints
+                checkpoint_path = f"{CHECKPOINT_URL}/download?path=%2F&files={checkpoint_path}.ckpt"
+            datamodule_hparams = torch.hub.load_state_dict_from_url(
+                checkpoint_path, map_location="cpu"
+            )["datamodule_hyper_parameters"]
+        except Exception as e:
+            raise ValueError(
+                "Could not load the checkpoint given the provided name",
+                checkpoint_path,
+            )
     # update the hparams with the ones from the arguments
     if num_workers is not None:
         datamodule_hparams["num_workers"] = num_workers
@@ -186,11 +192,26 @@ def plmodel_setup(checkpoint_path, eval_trim_beats, dbn, gpu):
     if dbn is not None:
         model_hparams["use_dbn"] = dbn
 
-    if checkpoint_path in CHECKPOINT_URL:
-        checkpoint_path = CHECKPOINT_URL[checkpoint_path]
-    model = PLBeatThis.load_from_checkpoint(
-        checkpoint_path, map_location="cpu", **model_hparams
-    )
+    try:
+        # try interpreting as local file name
+        model = PLBeatThis.load_from_checkpoint(
+        checkpoint_path, map_location="cpu", **model_hparams)
+    except FileNotFoundError:
+        try:
+            if not (
+                str(checkpoint_path).startswith("https://")
+                or str(checkpoint_path).startswith("http://")
+            ):
+                # interpret it as a name of one of our checkpoints
+                checkpoint_path = f"{CHECKPOINT_URL}/download?path=%2F&files={checkpoint_path}.ckpt"
+            model = PLBeatThis.load_from_checkpoint(
+                checkpoint_path, map_location="cpu", **model_hparams)
+        except Exception as e:
+            raise ValueError(
+                "Could not load the checkpoint given the provided name",
+                checkpoint_path,
+            )
+    
     # set correct device and accelerator
     if gpu >= 0:
         devices = [gpu]
