@@ -294,11 +294,8 @@ class BeatDataModule(pl.LightningDataModule):
         # print which datasets were not used
         usedsets = trainsets | valsets | testsets
         csvsets = set(self.metadata_df["dataset"].unique())
-        infosets = set(DATASET_INFO.keys())
         if (csvsets - usedsets):
             print("Datasets in spectrogram CSV, but not used:", sorted(csvsets - usedsets))
-        if (infosets - usedsets):
-            print("Datasets in DATASET_INFO, but not used:", sorted(infosets - usedsets))
         # go back to rwc dataset to avoid further problems with paths
         self.metadata_df.loc[self.metadata_df.dataset.str.startswith("rwc_"), "dataset"] = "rwc"
 
