@@ -14,7 +14,7 @@ import mir_eval
 import torch.nn.functional as F
 import beat_this.model.loss
 from concurrent.futures import ThreadPoolExecutor
-from beat_this.utils import split_predict_aggregate
+from beat_this.inference import split_predict_aggregate
 
 
 class PLBeatThis(LightningModule):

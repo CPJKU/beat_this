@@ -1,25 +1,3 @@
-dependencies = ['torch', 'torchaudio', 'numpy']
+dependencies = ['torch', 'torchaudio', 'numpy', 'rotary_embedding_torch', 'einops', 'soxr']
 
-import torch
-
-from beat_this.inference import Audio2Beat
-
-
-    
-
-def beat_this_audio2beat(pretrained=True, device='cuda') -> Audio2Beat:
-    """ Load pretrained audio to beat model. """
-    if pretrained:
-        checkpoint_path = "final0"
-    else:
-        checkpoint_path = None
-    device = torch.device(device)
-    return Audio2Beat(checkpoint_path, device)
-
-if __name__ == "__main__":
-    model = beat_this_audio2beat()
-    audio_path = "data/preprocessed/mono_tracks/jaah/jaah_006-jelly_roll_mortons_red_hot_peppers-black_bottom_stomp/track_ps0.wav"
-    beat, downbeat = model(audio_path)
-    print(beat[:10], downbeat[:10])
-    print("Done!")
-
+from beat_this.inference import load_model as beat_this, BeatThis, Spect2Frames, Audio2Frames, Audio2Beats, File2Beats, File2File
