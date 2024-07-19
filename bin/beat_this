@@ -113,7 +113,7 @@ if __name__ == "__main__":
         "--suffix",
         "-s",
         type=str,
-        default=".beats.txt",
+        default=".beats",
         help="Suffix for output file names (default: %(default)s). Also see --append. Ignored if an explicit output file name is given.",
     )
     parser.add_argument(
