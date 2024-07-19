@@ -219,7 +219,7 @@ class Spect2Frames:
         return model_prediction["beat"], model_prediction["downbeat"]
 
     def __call__(self, spect):
-        return spect2frames(spect)
+        return self.spect2frames(spect)
 
 
 class Audio2Frames(Spect2Frames):
@@ -234,8 +234,8 @@ class Audio2Frames(Spect2Frames):
     def signal2spect(self, signal, sr):
         if signal.ndim != 1:
             signal = signal.mean(range(1, signal.ndim))
-        if ar != 22050:
-            signal = soxr.resample(signal, in_rate=audio_sr, out_rate=22050)
+        if sr != 22050:
+            signal = soxr.resample(signal, in_rate=sr, out_rate=22050)
         signal = torch.tensor(signal, dtype=torch.float32, device=self.device)
         return self.spect(signal)
 
