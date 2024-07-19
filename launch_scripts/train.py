@@ -1,4 +1,4 @@
-from pytorch_lightning.loggers import WandbLogger, TensorBoardLogger
+from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import (
     ModelCheckpoint,
     LearningRateMonitor,
@@ -6,7 +6,6 @@ from pytorch_lightning.callbacks import (
 from pytorch_lightning import Trainer, seed_everything
 import torch
 import argparse
-import os
 from pathlib import Path
 
 from beat_this.dataset.dataset import BeatDataModule
