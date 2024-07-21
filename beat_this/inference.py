@@ -116,7 +116,13 @@ def split_piece(
 
 
 def aggregate_prediction(
-    pred_chunks: list, starts: list, full_size: int, chunk_size: int, border_size: int, overlap_mode: str, device: str | torch.device
+    pred_chunks: list,
+    starts: list,
+    full_size: int,
+    chunk_size: int,
+    border_size: int,
+    overlap_mode: str,
+    device: str | torch.device,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Aggregates the predictions for the whole piece based on the given prediction chunks.
