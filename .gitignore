@@ -8,3 +8,4 @@ lightning_logs/
 wandb/
 .vscode/
 beat_this.egg-info/
+build/
