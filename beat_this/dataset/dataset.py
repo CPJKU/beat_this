@@ -154,7 +154,6 @@ class BeatTrackingDataset(Dataset):
                     "truth_downbeat": framewise_truth_downbeat,
                     "downbeat_mask": torch.as_tensor(item["downbeat_mask"]),
                     "padding_mask": np.ones(self.train_length, dtype=bool) if self.train_length is not None else np.ones(original_length, dtype=bool),
-                    "dataset": item["dataset"],
                     "truth_orig_beat": truth_orig_beat,
                     "truth_orig_downbeat": truth_orig_downbeat,
                     }
