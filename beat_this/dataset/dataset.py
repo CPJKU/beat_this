@@ -1,4 +1,3 @@
-from pytorch_lightning.utilities.types import EVAL_DATALOADERS
 import torch
 from torch.utils.data import Dataset
 import pytorch_lightning as pl

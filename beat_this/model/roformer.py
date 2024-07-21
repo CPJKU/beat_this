@@ -4,10 +4,8 @@ import torch
 from torch import nn
 from torch.nn import Module, ModuleList
 import torch.nn.functional as F
-from functools import wraps
-from rotary_embedding_torch import RotaryEmbedding
+from einops import rearrange
 
-from einops import rearrange, pack, unpack
 
 # helper functions
 

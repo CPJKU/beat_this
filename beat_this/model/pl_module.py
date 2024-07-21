@@ -3,15 +3,12 @@
 """
 
 from typing import Any
-from pathlib import Path
 import torch
-import torch.nn.functional as F
 import numpy as np
 from pytorch_lightning import LightningModule
 from beat_this.model.beat_tracker import BeatThis
 from beat_this.model.postprocessor import Postprocessor
 import mir_eval
-import torch.nn.functional as F
 import beat_this.model.loss
 from concurrent.futures import ThreadPoolExecutor
 from beat_this.inference import split_predict_aggregate
