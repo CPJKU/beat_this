@@ -96,3 +96,12 @@ def save_beat_tsv(beats: np.ndarray, downbeats: np.ndarray, outpath: str) -> Non
                 f.write(f"{beat}\t{counter}\n")
     except KeyboardInterrupt:
         outpath.unlink()  # avoid half-written files
+
+
+def replace_state_dict_key(state_dict: dict, old: str, new: str):
+    """Replaces `old` in all keys of `state_dict` with `new`."""
+    keys = list(state_dict.keys())  # take snapshot of the keys
+    for key in keys:
+        if old in key:
+            state_dict[key.replace(old, new)] = state_dict.pop(key)
+    return state_dict

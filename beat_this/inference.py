@@ -6,31 +6,9 @@ import numpy as np
 from beat_this.preprocessing import load_audio, LogMelSpect
 from beat_this.model.beat_tracker import BeatThis
 from beat_this.model.postprocessor import Postprocessor
-from beat_this.utils import save_beat_tsv
+from beat_this.utils import replace_state_dict_key, save_beat_tsv
 
 CHECKPOINT_URL = "https://cloud.cp.jku.at/index.php/s/7ik4RrBKTS273gp"
-
-
-def lightning_to_torch(checkpoint: dict) -> dict:
-    """
-    Convert a PyTorch Lightning checkpoint to a PyTorch checkpoint.
-
-    Args:
-        checkpoint (dict): The PyTorch Lightning checkpoint.
-
-    Returns:
-        dict: The PyTorch checkpoint.
-    """
-    # modify the checkpoint to remove the prefix "model.", so we can load the
-    # PLBeatThis lightning module checkpoint in pure pytorch
-    for key in list(
-        checkpoint["state_dict"].keys()
-    ):  # use list to take a snapshot of the keys
-        if "model." in key:
-            checkpoint["state_dict"][key.replace("model.", "")] = checkpoint[
-                "state_dict"
-            ].pop(key)
-    return checkpoint
 
 
 def load_model(
@@ -73,9 +51,10 @@ def load_model(
                     "Could not load the checkpoint given the provided name",
                     checkpoint_path,
                 )
-        # modify the checkpoint to remove the prefix "model.", so we can load a lightning module checkpoint in pure pytorch
-        checkpoint = lightning_to_torch(checkpoint)
-        model.load_state_dict(checkpoint["state_dict"])
+        # The PLBeatThis (LightningModule) state_dict contains the BeatThis
+        # state_dict under the "model." prefix; remove the prefix to load it
+        state_dict = replace_state_dict_key(checkpoint["state_dict"], "model.", "")
+        model.load_state_dict(state_dict)
     return model.to(device).eval()
 
 

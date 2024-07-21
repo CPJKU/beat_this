@@ -8,7 +8,8 @@ from torch.distributions.exponential import Exponential
 from rotary_embedding_torch import RotaryEmbedding
 from einops import rearrange
 
-import beat_this.model.roformer as roformer
+from beat_this.model import roformer
+from beat_this.utils import replace_state_dict_key
 
 
 class BeatThis(nn.Module):
@@ -123,20 +124,16 @@ class BeatThis(nn.Module):
         x = self.transformer_blocks(x)
         x = self.task_heads(x)
         return x
-    
+
     def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
-        # compiled models have _orig_mod in the state dict keys, remove it
-        for key in list(state_dict.keys()):  # use list to take a snapshot of the keys
-            if "._orig_mod" in key:
-                state_dict[key.replace("._orig_mod", "")] = state_dict.pop(key)
+        # remove _orig_mod prefixes for compiled models
+        state_dict = replace_state_dict_key(state_dict, "_orig_mod.", "")
         super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
 
     def state_dict(self, *args, **kwargs):
         state_dict = super().state_dict(*args, **kwargs)
         # remove _orig_mod prefixes for compiled models
-        for key in list(state_dict.keys()):  # use list to take a snapshot of the keys
-            if "._orig_mod" in key:
-                state_dict[key.replace("._orig_mod", "")] = state_dict.pop(key)
+        state_dict = replace_state_dict_key(state_dict, "_orig_mod.", "")
         return state_dict
 
 
