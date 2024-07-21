@@ -58,11 +58,17 @@ def load_model(
                     or str(checkpoint_path).startswith("http://")
                 ):
                     # interpret it as a name of one of our checkpoints
-                    checkpoint_path = f"{CHECKPOINT_URL}/download?path=%2F&files={checkpoint_path}.ckpt"
+                    checkpoint_url = f"{CHECKPOINT_URL}/download?path=%2F&files={checkpoint_path}.ckpt"
+                    file_name = f"beat_this-{checkpoint_path}.ckpt"
+                else:
+                    checkpoint_url = checkpoint_path
+                    file_name = None
                 checkpoint = torch.hub.load_state_dict_from_url(
-                    checkpoint_path, map_location=device
+                    checkpoint_url,
+                    file_name=file_name,
+                    map_location=device,
                 )
-            except Exception as e:
+            except Exception:
                 raise ValueError(
                     "Could not load the checkpoint given the provided name",
                     checkpoint_path,
