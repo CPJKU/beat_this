@@ -146,7 +146,7 @@ class BeatTrackingDataset(Dataset):
 
             # prepare annotations
             framewise_truth_beat, framewise_truth_downbeat, truth_orig_beat, truth_orig_downbeat = prepare_annotations(item, start_frame, end_frame, self.fps)
-            
+
             # restructure the item dict with the correct training information
             item = {"spect": spect,
                     "spect_path": str(item["spect_path"]),
@@ -159,7 +159,7 @@ class BeatTrackingDataset(Dataset):
                     "truth_orig_beat": truth_orig_beat,
                     "truth_orig_downbeat": truth_orig_downbeat,
                     }
-            
+
             # pad all framewise tensors if needed
             if longer < 0:
                 item["spect"] = np.pad(item["spect"], [(0, -longer), (0, 0)], constant_values=0)
@@ -325,7 +325,7 @@ class BeatDataModule(pl.LightningDataModule):
                                                 deterministic=True,
                                                 augmentations={},
                                                 train_length=None,
-                                                **shared_kwargs) 
+                                                **shared_kwargs)
         print(f"Train size: {len(self.train_dataset)}, Val size: {len(self.val_dataset)}, Test size: {len(self.test_dataset)}")
         self.initialized = True
 
@@ -339,16 +339,16 @@ class BeatDataModule(pl.LightningDataModule):
 
     def test_dataloader(self):
         return DataLoader(self.test_dataset, batch_size=1, num_workers=self.num_workers)
-    
+
     def predict_dataloader(self):
         return DataLoader(self.predict_dataset, batch_size=1, num_workers=self.num_workers)
-    
+
     def get_train_positive_weights(self, widen_target_mask=3):
         """
         Computes the relation of negative targets to positive targets.
         `widen_target_mask` reduces the number of negative targets by the given
         factor times the number of positive targets (for ignoring a number of
-        frames around each positive label). 
+        frames around each positive label).
         For example a `widen_target_mask` of 3 will ignore 7 frames, 3 for each side plus the central.
         """
         # find the positive weight for the loss as a ratio between (down)beat and non-(down)beat annotation
@@ -370,7 +370,7 @@ def prepare_annotations(item, start_frame, end_frame, fps):
     truth_bdb_frame = (truth_bdb_time * fps).round().astype(int)
     # form annotations excerpt
     # filter out the annotations that are earlier than the start and shift left
-    truth_bdb_frame -= start_frame 
+    truth_bdb_frame -= start_frame
     idx = np.searchsorted(truth_bdb_frame, 0)
     truth_bdb_frame = truth_bdb_frame[idx:]
     truth_bdb_value = truth_bdb_value[idx:]
@@ -409,4 +409,3 @@ def handle_datasets_mismatch(metadata_df):
         print("These datasets won't be used.")
     # return the datasets that are in both
     return set(metadata_df.dataset) & set(DATASET_INFO.keys())
-

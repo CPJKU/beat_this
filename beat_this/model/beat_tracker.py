@@ -135,7 +135,6 @@ class BeatThis(nn.Module):
         return state_dict
 
 
-
 class PartialRoformer(nn.Module):
     """
     Takes a (batch, channels, freqs, time) input, applies self-attention and
@@ -165,13 +164,14 @@ class PartialRoformer(nn.Module):
         x = x + self.ff(x)
         x = rearrange(x, f"{pattern} -> b c f t", b=b)
         return x
-    
+
+
 class PartialFTTransformer(nn.Module):
     """
     Takes a (batch, channels, freqs, time) input, applies self-attention and
     a feed-forward block alternatively across frequencies and across time.
 
-    Returns a tensor of the same shape as the input. 
+    Returns a tensor of the same shape as the input.
     """
 
     def __init__(self, dim, dim_head, n_head, rotary_embed, dropout):
@@ -221,7 +221,8 @@ class SumHead(nn.Module):
         with torch.autocast(beat.device.type, enabled=False):
             beat = beat.float() + downbeat.float()
         return {"beat":beat, "downbeat": downbeat}
-    
+
+
 class Head(nn.Module):
     """
     A PyToch module that produces the final beat and downbeat prediction logits with independent linear layers outputs.

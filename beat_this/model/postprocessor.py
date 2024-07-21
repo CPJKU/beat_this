@@ -27,7 +27,7 @@ class Postprocessor:
         if type == "dbn":
             from madmom.features.downbeats import DBNDownBeatTrackingProcessor
             self.dbn = DBNDownBeatTrackingProcessor(beats_per_bar=[3, 4], min_bpm=55.0, max_bpm=215.0, fps=self.fps, transition_lambda=100, )
-    
+
 
     def __call__(self, beat : torch.Tensor, downbeat: torch.Tensor, padding_mask: torch.Tensor | None = None) -> tuple[np.ndarray, np.ndarray]:
         """
@@ -95,7 +95,7 @@ class Postprocessor:
         # pass from a boolean array to a list of times in frames.
         beat_frame = torch.nonzero(beat_peaks)
         downbeat_frame = torch.nonzero(downbeat_peaks)
-        # remove adjacent peaks 
+        # remove adjacent peaks
         beat_frame = deduplicate_peaks(beat_frame, width=1)
         downbeat_frame = deduplicate_peaks(downbeat_frame, width=1)
         # convert from frame to seconds
@@ -112,7 +112,7 @@ class Postprocessor:
         beat_prob = beat.double().sigmoid()
         downbeat_prob = downbeat.double().sigmoid()
         # limit lower and upper bound, since 0 and 1 create problems in the DBN
-        epsilon = 1e-5 
+        epsilon = 1e-5
         beat_prob = beat_prob * (1-epsilon) + epsilon/2
         downbeat_prob = downbeat_prob * (1-epsilon) + epsilon/2
         with ThreadPoolExecutor() as executor:
@@ -126,7 +126,7 @@ class Postprocessor:
         downbeat_prob = padded_downbeat_prob[mask]
         # build an artificial multiclass prediction, as suggested by Böck et al.
         # again we limit the lower bound to avoid problems with the DBN
-        epsilon = 1e-5 
+        epsilon = 1e-5
         combined_act = np.vstack((np.maximum(beat_prob.cpu().numpy() - downbeat_prob.cpu().numpy(), epsilon/2), downbeat_prob.cpu().numpy())).T
         # run the DBN
         dbn_out = self.dbn(combined_act)
