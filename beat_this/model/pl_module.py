@@ -3,14 +3,16 @@
 """
 
 from typing import Any
+from concurrent.futures import ThreadPoolExecutor
+
 import torch
 import numpy as np
+import mir_eval
 from pytorch_lightning import LightningModule
+
 from beat_this.model.beat_tracker import BeatThis
 from beat_this.model.postprocessor import Postprocessor
-import mir_eval
 import beat_this.model.loss
-from concurrent.futures import ThreadPoolExecutor
 from beat_this.inference import split_predict_aggregate
 from beat_this.utils import replace_state_dict_key
 

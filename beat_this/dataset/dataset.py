@@ -1,14 +1,16 @@
-import torch
-from torch.utils.data import Dataset
-import pytorch_lightning as pl
-from torch.utils.data import DataLoader
-import pandas as pd
 from pathlib import Path
-import numpy as np
 import concurrent.futures
+
+import torch
+from torch.utils.data import Dataset, DataLoader
+import pytorch_lightning as pl
+import pandas as pd
+import numpy as np
+
 from beat_this.utils import index_to_framewise
 from beat_this.dataset.augment import precomputed_augmentation_filenames, augment_pitchtempo, augment_mask
 from beat_this.utils import load_spect
+
 
 DATASET_INFO = {
     "gtzan" : {"beat": True, "downbeat" : True},

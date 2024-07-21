@@ -1,9 +1,10 @@
 from collections import OrderedDict
+
 import torch
-import torch.nn as nn
+from torch import nn
+from einops import rearrange
 from einops.layers.torch import Rearrange
 from rotary_embedding_torch import RotaryEmbedding
-from einops import rearrange
 
 from beat_this.model import roformer
 from beat_this.utils import replace_state_dict_key

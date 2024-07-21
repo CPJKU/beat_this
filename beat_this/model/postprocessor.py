@@ -1,9 +1,10 @@
+from concurrent.futures import ThreadPoolExecutor
+
 import torch
+import torch.nn.functional as F
 import numpy as np
 from einops import rearrange
-import torch.nn.functional as F
-from concurrent.futures import ThreadPoolExecutor
-from typing import Optional, Tuple
+
 
 class Postprocessor:
     """ Postprocessor for the beat and downbeat predictions of the model.
@@ -28,7 +29,7 @@ class Postprocessor:
             self.dbn = DBNDownBeatTrackingProcessor(beats_per_bar=[3, 4], min_bpm=55.0, max_bpm=215.0, fps=self.fps, transition_lambda=100, )
     
 
-    def __call__(self, beat : torch.Tensor, downbeat: torch.Tensor, padding_mask: Optional[torch.Tensor] = None) -> Tuple[np.ndarray, np.ndarray]:
+    def __call__(self, beat : torch.Tensor, downbeat: torch.Tensor, padding_mask: torch.Tensor | None = None) -> tuple[np.ndarray, np.ndarray]:
         """
         Apply postprocessing to the input beat and downbeat tensors. Works with batched and unbatched inputs.
         The output is a list of times in seconds, or a list of lists of times in seconds, if the input is batched.
