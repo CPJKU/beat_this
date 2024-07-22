@@ -96,7 +96,10 @@ class SplittedShiftTolerantBCELoss(torch.nn.Module):
     """
     Alternative implementation of ShiftTolerantBCELoss that splits the loss for
     positive and negative targets. This is mainly provided as it may be a bit
-    easier to understand and compare with the Beat This! paper.
+    easier to understand and compare with the Beat This! paper. Note that for
+    non-binary targets (e.g., with label smoothing), this implementation
+    matches the equation in the paper (Section 3.3), while ShiftTolerantBCELoss
+    deviates from it. For binary targets, the results are identical.
 
     Args:
         pos_weight (int): weight of positive targets
