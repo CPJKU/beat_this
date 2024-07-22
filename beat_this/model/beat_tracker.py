@@ -42,53 +42,31 @@ class BeatThis(nn.Module):
     ):
         super().__init__()
 
-        assert transformer_dim % head_dim == 0, "transformer_dim must be divisible by head_dim"
-        n_heads = transformer_dim // head_dim
         rotary_embed = RotaryEmbedding(head_dim)
 
         # create the frontend
-        stem = nn.Sequential(
-            OrderedDict(
-                rearrange_tf=Rearrange("b t f -> b f t"),
-                bn1d=nn.BatchNorm1d(spect_dim),
-                add_channel=Rearrange("b f t -> b 1 f t"),
-                conv2d=nn.Conv2d(in_channels=1, out_channels=stem_dim,
-                        kernel_size=(4, 3), stride=(4, 1), padding=(0, 1), bias=False),
-                bn2d=nn.BatchNorm2d(stem_dim),
-                activation=nn.GELU(),
-            )
-        )
+        # - stem
+        stem = self.make_stem(spect_dim, stem_dim)
+        spect_dim //= 4  # frequencies were convolved with stride 4
+        # - three frontend blocks
         frontend_blocks = []
-        _dim = stem_dim
+        dim = stem_dim
         for _ in range(3):
-            frontend_blocks.append(
-                nn.Sequential(
-                    OrderedDict([
-                        ("partial", PartialFTTransformer(
-                            dim=_dim,
-                            dim_head=head_dim,
-                            n_head=_dim // head_dim,
-                            rotary_embed=rotary_embed,
-                            dropout=dropout["frontend"],
-                        ) if partial_transformers else nn.Identity()),
-                        # conv block
-                        ("conv2d", nn.Conv2d(in_channels=_dim, out_channels=_dim * 2,
-                                kernel_size=(2, 3), stride=(2, 1), padding=(0, 1), bias=False)),
-                        # out_channels : 64, 128, 256
-                        # freqs : 16, 8, 4 (due to the stride=2)
-                        ("norm", nn.BatchNorm2d(_dim*2)),
-                        ("activation", nn.GELU()),
-                    ])
-                )
-            )
-            _dim = _dim * 2
+            frontend_blocks.append(self.make_frontend_block(
+                dim, dim * 2, partial_transformers, head_dim, rotary_embed,
+                dropout["frontend"]))
+            dim *= 2
+            spect_dim //= 2  # frequencies were convolved with stride 2
         frontend_blocks = nn.Sequential(*frontend_blocks)
+        # - linear projection to transformer dimensionality
         concat = Rearrange("b c f t -> b t (c f)")
-        last_linear = nn.Linear(_dim*4, transformer_dim)
+        last_linear = nn.Linear(dim * spect_dim, transformer_dim)
         self.frontend = nn.Sequential(
             stem, frontend_blocks, concat, last_linear)
 
         # create the transformer blocks
+        n_heads = transformer_dim // head_dim
+        assert transformer_dim % head_dim == 0, "transformer_dim must be divisible by head_dim"
         self.transformer_blocks = roformer.Transformer(dim=transformer_dim, depth=n_layers, heads=n_heads, attn_dropout=dropout["transformer"],
                                                        ff_dropout=dropout["transformer"], rotary_embed=rotary_embed, ff_mult=ff_mult, dim_head=head_dim, norm_output=True)
 
@@ -101,7 +79,41 @@ class BeatThis(nn.Module):
         # init all weights
         self.apply(self._init_weights)
 
-    def _init_weights(self, module):
+    @staticmethod
+    def make_stem(spect_dim, stem_dim):
+        return nn.Sequential(
+            OrderedDict(
+                rearrange_tf=Rearrange("b t f -> b f t"),
+                bn1d=nn.BatchNorm1d(spect_dim),
+                add_channel=Rearrange("b f t -> b 1 f t"),
+                conv2d=nn.Conv2d(in_channels=1, out_channels=stem_dim, kernel_size=(4, 3), stride=(4, 1), padding=(0, 1), bias=False),
+                bn2d=nn.BatchNorm2d(stem_dim),
+                activation=nn.GELU(),
+            )
+        )
+
+    @staticmethod
+    def make_frontend_block(in_dim, out_dim, partial_transformers=True, head_dim=None, rotary_embed=None, dropout=0):
+        return nn.Sequential(
+            OrderedDict(
+                partial=PartialFTTransformer(
+                    dim=in_dim,
+                    dim_head=head_dim,
+                    n_head=in_dim // head_dim,
+                    rotary_embed=rotary_embed,
+                    dropout=dropout,
+                ) if partial_transformers else nn.Identity(),
+                # conv block
+                conv2d=nn.Conv2d(in_channels=in_dim, out_channels=out_dim, kernel_size=(2, 3), stride=(2, 1), padding=(0, 1), bias=False),
+                # out_channels : 64, 128, 256
+                # freqs : 16, 8, 4 (due to the stride=2)
+                norm=nn.BatchNorm2d(out_dim),
+                activation=nn.GELU(),
+            )
+        )
+
+    @staticmethod
+    def _init_weights(module):
         if isinstance(module, (nn.Linear, nn.Conv1d)):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
             if module.bias is not None:
