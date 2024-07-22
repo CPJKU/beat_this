@@ -32,15 +32,15 @@ class BeatThis(nn.Module):
 
     def __init__(
         self,
-        spect_dim: int=128,
-        transformer_dim: int=512,
-        ff_mult: int=4,
-        n_layers: int=6,
-        head_dim: int=32,
-        stem_dim: int=32,
-        dropout: dict={"frontend": 0.1, "transformer": 0.2},
-        sum_head: bool=True,
-        partial_transformers: bool=True,
+        spect_dim: int = 128,
+        transformer_dim: int = 512,
+        ff_mult: int = 4,
+        n_layers: int = 6,
+        head_dim: int = 32,
+        stem_dim: int = 32,
+        dropout: dict = {"frontend": 0.1, "transformer": 0.2},
+        sum_head: bool = True,
+        partial_transformers: bool = True,
     ):
         super().__init__()
         # shared rotary embedding for frontend blocks and transformer blocks
@@ -54,23 +54,40 @@ class BeatThis(nn.Module):
         frontend_blocks = []
         dim = stem_dim
         for _ in range(3):
-            frontend_blocks.append(self.make_frontend_block(
-                dim, dim * 2, partial_transformers, head_dim, rotary_embed,
-                dropout["frontend"]))
+            frontend_blocks.append(
+                self.make_frontend_block(
+                    dim,
+                    dim * 2,
+                    partial_transformers,
+                    head_dim,
+                    rotary_embed,
+                    dropout["frontend"],
+                )
+            )
             dim *= 2
             spect_dim //= 2  # frequencies were convolved with stride 2
         frontend_blocks = nn.Sequential(*frontend_blocks)
         # - linear projection to transformer dimensionality
         concat = Rearrange("b c f t -> b t (c f)")
         last_linear = nn.Linear(dim * spect_dim, transformer_dim)
-        self.frontend = nn.Sequential(
-            stem, frontend_blocks, concat, last_linear)
+        self.frontend = nn.Sequential(stem, frontend_blocks, concat, last_linear)
 
         # create the transformer blocks
-        assert transformer_dim % head_dim == 0, "transformer_dim must be divisible by head_dim"
+        assert (
+            transformer_dim % head_dim == 0
+        ), "transformer_dim must be divisible by head_dim"
         n_heads = transformer_dim // head_dim
-        self.transformer_blocks = roformer.Transformer(dim=transformer_dim, depth=n_layers, heads=n_heads, attn_dropout=dropout["transformer"],
-                                                       ff_dropout=dropout["transformer"], rotary_embed=rotary_embed, ff_mult=ff_mult, dim_head=head_dim, norm_output=True)
+        self.transformer_blocks = roformer.Transformer(
+            dim=transformer_dim,
+            depth=n_layers,
+            heads=n_heads,
+            attn_dropout=dropout["transformer"],
+            ff_dropout=dropout["transformer"],
+            rotary_embed=rotary_embed,
+            ff_mult=ff_mult,
+            dim_head=head_dim,
+            norm_output=True,
+        )
 
         # create the output heads
         if sum_head:
@@ -88,27 +105,54 @@ class BeatThis(nn.Module):
                 rearrange_tf=Rearrange("b t f -> b f t"),
                 bn1d=nn.BatchNorm1d(spect_dim),
                 add_channel=Rearrange("b f t -> b 1 f t"),
-                conv2d=nn.Conv2d(in_channels=1, out_channels=stem_dim, kernel_size=(4, 3), stride=(4, 1), padding=(0, 1), bias=False),
+                conv2d=nn.Conv2d(
+                    in_channels=1,
+                    out_channels=stem_dim,
+                    kernel_size=(4, 3),
+                    stride=(4, 1),
+                    padding=(0, 1),
+                    bias=False,
+                ),
                 bn2d=nn.BatchNorm2d(stem_dim),
                 activation=nn.GELU(),
             )
         )
 
     @staticmethod
-    def make_frontend_block(in_dim: int, out_dim: int, partial_transformers: bool=True, head_dim: int|None=32, rotary_embed: RotaryEmbedding | None=None, dropout: float=0.1) -> nn.Module:
+    def make_frontend_block(
+        in_dim: int,
+        out_dim: int,
+        partial_transformers: bool = True,
+        head_dim: int | None = 32,
+        rotary_embed: RotaryEmbedding | None = None,
+        dropout: float = 0.1,
+    ) -> nn.Module:
         if partial_transformers and (head_dim is None or rotary_embed is None):
-            raise ValueError("Must specify head_dim and rotary_embed for using partial_transformers")
+            raise ValueError(
+                "Must specify head_dim and rotary_embed for using partial_transformers"
+            )
         return nn.Sequential(
             OrderedDict(
-                partial=PartialFTTransformer(
-                    dim=in_dim,
-                    dim_head=head_dim,
-                    n_head=in_dim // head_dim,
-                    rotary_embed=rotary_embed,
-                    dropout=dropout,
-                ) if partial_transformers else nn.Identity(),
+                partial=(
+                    PartialFTTransformer(
+                        dim=in_dim,
+                        dim_head=head_dim,
+                        n_head=in_dim // head_dim,
+                        rotary_embed=rotary_embed,
+                        dropout=dropout,
+                    )
+                    if partial_transformers
+                    else nn.Identity()
+                ),
                 # conv block
-                conv2d=nn.Conv2d(in_channels=in_dim, out_channels=out_dim, kernel_size=(2, 3), stride=(2, 1), padding=(0, 1), bias=False),
+                conv2d=nn.Conv2d(
+                    in_channels=in_dim,
+                    out_channels=out_dim,
+                    kernel_size=(2, 3),
+                    stride=(2, 1),
+                    padding=(0, 1),
+                    bias=False,
+                ),
                 # out_channels : 64, 128, 256
                 # freqs : 16, 8, 4 (due to the stride=2)
                 norm=nn.BatchNorm2d(out_dim),
@@ -124,7 +168,8 @@ class BeatThis(nn.Module):
                 torch.nn.init.zeros_(module.bias)
         elif isinstance(module, nn.Conv2d):
             torch.nn.init.kaiming_normal_(
-                module.weight, mode='fan_out', nonlinearity='relu')
+                module.weight, mode="fan_out", nonlinearity="relu"
+            )
             if module.bias is not None:
                 torch.nn.init.zeros_(module.bias)
         elif isinstance(module, nn.Embedding):
@@ -158,23 +203,36 @@ class PartialRoformer(nn.Module):
     Returns a tensor of the same shape as the input.
     """
 
-    def __init__(self, dim: int, dim_head: int, n_head: int, direction: str, rotary_embed: RotaryEmbedding, dropout: float):
+    def __init__(
+        self,
+        dim: int,
+        dim_head: int,
+        n_head: int,
+        direction: str,
+        rotary_embed: RotaryEmbedding,
+        dropout: float,
+    ):
         super().__init__()
 
         assert dim % dim_head == 0, "dim must be divisible by dim_head"
         assert dim // dim_head == n_head, "n_head must be equal to dim // dim_head"
         self.direction = direction[0].lower()
-        if not self.direction in 'ft':
+        if not self.direction in "ft":
             raise ValueError(f"direction must be F or T, got {direction}")
-        self.attn = roformer.Attention(dim, heads=n_head, dim_head=dim_head,
-                                       dropout=dropout, rotary_embed=rotary_embed)
+        self.attn = roformer.Attention(
+            dim,
+            heads=n_head,
+            dim_head=dim_head,
+            dropout=dropout,
+            rotary_embed=rotary_embed,
+        )
         self.ff = roformer.FeedForward(dim, dropout=dropout)
 
     def forward(self, x):
         b = len(x)
-        if self.direction == 'f':
+        if self.direction == "f":
             pattern = "(b t) f c"
-        elif self.direction == 't':
+        elif self.direction == "t":
             pattern = "(b f) t c"
         x = rearrange(x, f"b c f t -> {pattern}")
         x = x + self.attn(x)
@@ -191,18 +249,35 @@ class PartialFTTransformer(nn.Module):
     module. Returns a tensor of the same shape as the input.
     """
 
-    def __init__(self, dim: int, dim_head: int, n_head: int, rotary_embed: RotaryEmbedding, dropout: float):
+    def __init__(
+        self,
+        dim: int,
+        dim_head: int,
+        n_head: int,
+        rotary_embed: RotaryEmbedding,
+        dropout: float,
+    ):
         super().__init__()
 
         assert dim % dim_head == 0, "dim must be divisible by dim_head"
         assert dim // dim_head == n_head, "n_head must be equal to dim // dim_head"
         # frequency directed partial transformer
-        self.attnF = roformer.Attention(dim, heads=n_head, dim_head=dim_head,
-                                       dropout=dropout, rotary_embed=rotary_embed)
+        self.attnF = roformer.Attention(
+            dim,
+            heads=n_head,
+            dim_head=dim_head,
+            dropout=dropout,
+            rotary_embed=rotary_embed,
+        )
         self.ffF = roformer.FeedForward(dim, dropout=dropout)
         # time directed partial transformer
-        self.attnT = roformer.Attention(dim, heads=n_head, dim_head=dim_head,
-                                       dropout=dropout, rotary_embed=rotary_embed)
+        self.attnT = roformer.Attention(
+            dim,
+            heads=n_head,
+            dim_head=dim_head,
+            dropout=dropout,
+            rotary_embed=rotary_embed,
+        )
         self.ffT = roformer.FeedForward(dim, dropout=dropout)
 
     def forward(self, x):
@@ -225,6 +300,7 @@ class SumHead(nn.Module):
     The beats are a sum of all beats and all downbeats predictions, to reduce the prediction
     of downbeats which are not beats.
     """
+
     def __init__(self, input_dim):
         super().__init__()
         self.beat_downbeat_lin = nn.Linear(input_dim, 2)
@@ -237,13 +313,14 @@ class SumHead(nn.Module):
         # autocast to float16 disabled to avoid numerical issues causing NaNs
         with torch.autocast(beat.device.type, enabled=False):
             beat = beat.float() + downbeat.float()
-        return {"beat":beat, "downbeat": downbeat}
+        return {"beat": beat, "downbeat": downbeat}
 
 
 class Head(nn.Module):
     """
     A PyToch module that produces the final beat and downbeat prediction logits with independent linear layers outputs.
     """
+
     def __init__(self, input_dim):
         super().__init__()
         self.beat_downbeat_lin = nn.Linear(input_dim, 2)
