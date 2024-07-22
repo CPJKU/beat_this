@@ -27,7 +27,7 @@ class FastShiftTolerantBCELoss(torch.nn.Module):
         # compute loss
         return F.binary_cross_entropy_with_logits(
             wide_preds, cropped_targets, weight=look_at,
-            pos_weight=self.pos_weight, reduction='none').view(targets.size(0), -1).mean(1).mean()
+            pos_weight=self.pos_weight, reduction='none').mean()
 
 class MaskedBCELoss(torch.nn.Module):
     def __init__(self, pos_weight: int=1):
