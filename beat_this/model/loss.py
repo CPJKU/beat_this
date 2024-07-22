@@ -3,7 +3,7 @@ import torch.nn.functional as F
 
 
 class FastShiftTolerantBCELoss(torch.nn.Module):
-    def __init__(self, pos_weight: int = 1, tolerance: int = 3):
+    def __init__(self, pos_weight: float = 1, tolerance: int = 3):
         super().__init__()
         if tolerance < 1:
             raise ValueError(
@@ -12,7 +12,7 @@ class FastShiftTolerantBCELoss(torch.nn.Module):
         self.tolerance = tolerance
         self.register_buffer(
             "pos_weight",
-            torch.tensor([pos_weight], dtype=torch.int32),
+            torch.tensor(pos_weight, dtype=torch.get_default_dtype()),
             persistent=False,
         )
 
@@ -41,11 +41,11 @@ class FastShiftTolerantBCELoss(torch.nn.Module):
 
 
 class MaskedBCELoss(torch.nn.Module):
-    def __init__(self, pos_weight: int = 1):
+    def __init__(self, pos_weight: float = 1):
         super().__init__()
         self.register_buffer(
             "pos_weight",
-            torch.tensor([pos_weight], dtype=torch.int32),
+            torch.tensor(pos_weight, dtype=torch.get_default_dtype()),
             persistent=False,
         )
 
@@ -68,7 +68,7 @@ class ShiftTolerantBCELoss(torch.nn.Module):
         spread_preds (int): amount of temporal max-pooling applied to predictions
     """
 
-    def __init__(self, pos_weight: int = 1, spread_preds=3):
+    def __init__(self, pos_weight: float = 1, spread_preds=3):
         super().__init__()
         self.spread_preds = spread_preds
         self.spread_targets = (
@@ -76,7 +76,7 @@ class ShiftTolerantBCELoss(torch.nn.Module):
         )  # targets are always spreaded twice as much
         self.register_buffer(
             "pos_weight",
-            torch.tensor([pos_weight], dtype=torch.int32),
+            torch.tensor(pos_weight, dtype=torch.get_default_dtype()),
             persistent=False,
         )
 
