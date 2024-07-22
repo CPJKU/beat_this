@@ -78,11 +78,11 @@ class PLBeatThis(LightningModule):
         elif loss_type == "bce":
             self.beat_loss = beat_this.model.loss.MaskedBCELoss()
             self.downbeat_loss = beat_this.model.loss.MaskedBCELoss()
-        elif loss_type == "fast_shift_tolerant_weighted_bce":
-            self.beat_loss = beat_this.model.loss.FastShiftTolerantBCELoss(
+        elif loss_type == "splitted_shift_tolerant_weighted_bce":
+            self.beat_loss = beat_this.model.loss.SplittedShiftTolerantBCELoss(
                 pos_weight=pos_weights["beat"]
             )
-            self.downbeat_loss = beat_this.model.loss.FastShiftTolerantBCELoss(
+            self.downbeat_loss = beat_this.model.loss.SplittedShiftTolerantBCELoss(
                 pos_weight=pos_weights["downbeat"]
             )
         else:
