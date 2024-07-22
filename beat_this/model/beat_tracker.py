@@ -1,3 +1,6 @@
+"""
+Model definitions for the Beat This! beat tracker.
+"""
 from collections import OrderedDict
 
 import torch
