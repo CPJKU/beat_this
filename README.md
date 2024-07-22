@@ -52,15 +52,15 @@ If you want to use the DBN for postprocessing, add `--dbn`. The DBN parameters a
 
 If you are a Python user, you can directly use the `beat_this.inference` module.
 
-First, instantiate an instance of the `Audio2Beat` class that encapsulates the model along with pre- and postprocessing:
+First, instantiate an instance of the `File2Beats` class that encapsulates the model along with pre- and postprocessing:
 ```python
-from beat_this.inference import Audio2Beat
-audio2beat = Audio2Beat(checkpoint_path="final0", device="cuda", dbn=False)
+from beat_this.inference import File2Beats
+file2beats = File2Beats(checkpoint_path="final0", device="cuda", dbn=False)
 ```
 To obtain a list of beats and downbeats for an audio file, run:
 ```python
 audio_path = "path/to/audio.file"
-beats, downbeats = audio2beat(audio_path)
+beats, downbeats = file2beats(audio_path)
 ```
 Optionally, you can produce a `.beats` file (e.g., for importing into [Sonic Visualizer](https://www.sonicvisualiser.org/)):
 ```python
@@ -68,6 +68,8 @@ from beat_this.utils import save_beat_tsv
 output_path = "path/to/output.beats"
 save_beat_tsv(beats, downbeats, outpath)
 ```
+If you already have an audio tensor loaded, instead of `File2Beats`, use `Audio2Beats` and pass the tensor and its sample rate.
+
 
 ## Training
 
