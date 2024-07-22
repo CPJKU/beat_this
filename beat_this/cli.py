@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+"""
+Beat This! command line inference tool.
+"""
 import sys
 import argparse
 from pathlib import Path
@@ -11,82 +14,7 @@ import torch
 from beat_this.inference import File2File
 
 
-def derive_output_path(input_path, suffix, append, output=None, parent=None):
-    """
-    Determine the output file name for `input_path` using the given
-    suffix. If given, `output` is the base directory for outputs, and
-    `parent` is the directory that was given on the command line.
-    """
-    # output directory
-    if output is None:
-        output_path = input_path
-    else:
-        if parent is not None:
-            input_path = input_path.relative_to(parent)
-        else:
-            input_path = input_path.name
-        output_path = output / input_path
-    # suffix
-    if append:
-        return output_path.parent / (output_path.name + suffix)
-    else:
-        return output_path.with_suffix(suffix)
-
-
-def main(inputs, model, output, suffix, append, skip_existing, touch_first, dbn, gpu):
-    # determine device
-    if torch.cuda.is_available() and gpu >= 0:
-        device = torch.device(f"cuda:{gpu}")
-    else:
-        device = torch.device("cpu")
-
-    # prepare model
-    file2file = File2File(model, device, dbn)
-
-    # process inputs
-    inputs = [Path(item) for item in inputs]
-    if output is not None:
-        output = Path(output)
-    if len(inputs) == 1 and not inputs[0].is_dir():
-        # special case: single input file
-        if output is None or output.is_dir():
-            output = derive_output_path(inputs[0], suffix, append, output)
-        file2file(inputs[0], output)
-    else:
-        # multiple inputs: first collect tasks so we can have a progress bar
-        tasks = []
-        for item in inputs:
-            if item.is_dir():
-                for fn in item.rglob("*"):
-                    if not fn.name.endswith(suffix) and not fn.is_dir():
-                        output_path = derive_output_path(
-                            fn, suffix, append, output, parent=item
-                        )
-                        if not skip_existing or not output_path.exists():
-                            tasks.append((fn, output_path))
-            else:
-                tasks.append((fn, derive_output_path(fn, suffix, append, output)))
-        # then process all of them
-        if tqdm is not None:
-            tasks = tqdm.tqdm(tasks)
-        for item, output in tasks:
-            if touch_first:
-                try:
-                    output.touch(exist_ok=not skip_existing)
-                except FileExistsError:
-                    continue
-            elif skip_existing and output.exists():
-                continue
-            try:
-                file2file(item, output)
-            except Exception:
-                print(
-                    f'Could not process "{item}". Rerun with this file alone for details.',
-                    file=sys.stderr,
-                )
-
-
-if __name__ == "__main__":
+def get_parser():
     parser = argparse.ArgumentParser(
         description="Detects beats in given audio files with a Beat This! model."
     )
@@ -143,17 +71,87 @@ if __name__ == "__main__":
         default=0,
         help="Which GPU to use (not the number of GPUs), or -1 for CPU. Ignored if CUDA is not available. (default: %(default)s)",
     )
+    return parser
 
-    args = parser.parse_args()
 
-    main(
-        args.inputs,
-        args.model,
-        args.output,
-        args.suffix,
-        args.append,
-        args.skip_existing,
-        args.touch_first,
-        args.dbn,
-        args.gpu,
-    )
+def derive_output_path(input_path, suffix, append, output=None, parent=None):
+    """
+    Determine the output file name for `input_path` using the given
+    suffix. If given, `output` is the base directory for outputs, and
+    `parent` is the directory that was given on the command line.
+    """
+    # output directory
+    if output is None:
+        output_path = input_path
+    else:
+        if parent is not None:
+            input_path = input_path.relative_to(parent)
+        else:
+            input_path = input_path.name
+        output_path = output / input_path
+    # suffix
+    if append:
+        return output_path.parent / (output_path.name + suffix)
+    else:
+        return output_path.with_suffix(suffix)
+
+
+def run(inputs, model, output, suffix, append, skip_existing, touch_first, dbn, gpu):
+    # determine device
+    if torch.cuda.is_available() and gpu >= 0:
+        device = torch.device(f"cuda:{gpu}")
+    else:
+        device = torch.device("cpu")
+
+    # prepare model
+    file2file = File2File(model, device, dbn)
+
+    # process inputs
+    inputs = [Path(item) for item in inputs]
+    if output is not None:
+        output = Path(output)
+    if len(inputs) == 1 and not inputs[0].is_dir():
+        # special case: single input file
+        if output is None or output.is_dir():
+            output = derive_output_path(inputs[0], suffix, append, output)
+        file2file(inputs[0], output)
+    else:
+        # multiple inputs: first collect tasks so we can have a progress bar
+        tasks = []
+        for item in inputs:
+            if item.is_dir():
+                for fn in item.rglob("*"):
+                    if not fn.name.endswith(suffix) and not fn.is_dir():
+                        output_path = derive_output_path(
+                            fn, suffix, append, output, parent=item
+                        )
+                        if not skip_existing or not output_path.exists():
+                            tasks.append((fn, output_path))
+            else:
+                tasks.append((fn, derive_output_path(fn, suffix, append, output)))
+        # then process all of them
+        if tqdm is not None:
+            tasks = tqdm.tqdm(tasks)
+        for item, output in tasks:
+            if touch_first:
+                try:
+                    output.touch(exist_ok=not skip_existing)
+                except FileExistsError:
+                    continue
+            elif skip_existing and output.exists():
+                continue
+            try:
+                file2file(item, output)
+            except Exception:
+                print(
+                    f'Could not process "{item}". Rerun with this file alone for details.',
+                    file=sys.stderr,
+                )
+
+
+def main():
+    run(**vars(get_parser().parse_args()))
+
+
+if __name__ == "__main__":
+    sys.exit(main())

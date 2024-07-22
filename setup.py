@@ -13,7 +13,9 @@ setup(
     url="https://github.com/CPJKU/beat_this",
     license="MIT",
     packages=find_packages(),
-    scripts=["bin/beat_this"],
+    entry_points={
+        'console_scripts': ["beat_this=beat_this.cli:main"],
+    },
     install_requires=[
         "numpy",
         "torch>=2",
