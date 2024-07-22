@@ -1,5 +1,6 @@
-""" 
-    Pytorch lightning modules
+"""
+Pytorch Lightning module, wraps a BeatThis model along with losses, metrics and
+optimizers for training.
 """
 
 from typing import Any
