@@ -248,10 +248,3 @@ class Head(nn.Module):
         # separate beat from downbeat
         beat, downbeat = rearrange(beat_downbeat, "b t c -> c b t", c=2)
         return {"beat": beat, "downbeat": downbeat}
-
-
-if __name__ == "__main__":
-    model = BeatThis()
-    x = torch.randn(4, 1500, 128)
-    y = model(x)
-    print(y[0].shape, y[1].shape)
