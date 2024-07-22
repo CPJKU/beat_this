@@ -12,7 +12,7 @@ from beat_this.utils import replace_state_dict_key
 
 class BeatThis(nn.Module):
     """
-    A neural network model for beat tracking. It is compose of three main components:
+    A neural network model for beat tracking. It is composed of three main components:
     - a frontend that processes the input spectrogram,
     - a series of transformer blocks that process the output of the frontend,
     - a head that produces the final beat and downbeat predictions.
@@ -26,22 +26,24 @@ class BeatThis(nn.Module):
         stem_dim (int): The out dimension of the stem convolutional layer (default: 32).
         dropout (dict): A dictionary specifying the dropout rates for different parts of the model
             (default: {"frontend": 0.1, "transformer": 0.2}).
+        sum_head (bool): Whether to use a SumHead for the final predictions (default: True) or plain independent projections.
+        partial_transformers (bool): Whether to include partial frequency- and time-transformers in the frontend (default: True)
     """
 
     def __init__(
         self,
-        spect_dim=128,
-        transformer_dim=512,
-        ff_mult=4,
-        n_layers=6,
-        head_dim=32,
-        stem_dim=32,
-        dropout={"frontend": 0.1, "transformer": 0.2},
-        sum_head=True,
-        partial_transformers=True
+        spect_dim: int=128,
+        transformer_dim: int=512,
+        ff_mult: int=4,
+        n_layers: int=6,
+        head_dim: int=32,
+        stem_dim: int=32,
+        dropout: dict={"frontend": 0.1, "transformer": 0.2},
+        sum_head: bool=True,
+        partial_transformers: bool=True,
     ):
         super().__init__()
-
+        # shared rotary embedding for frontend blocks and transformer blocks
         rotary_embed = RotaryEmbedding(head_dim)
 
         # create the frontend
@@ -65,8 +67,8 @@ class BeatThis(nn.Module):
             stem, frontend_blocks, concat, last_linear)
 
         # create the transformer blocks
-        n_heads = transformer_dim // head_dim
         assert transformer_dim % head_dim == 0, "transformer_dim must be divisible by head_dim"
+        n_heads = transformer_dim // head_dim
         self.transformer_blocks = roformer.Transformer(dim=transformer_dim, depth=n_layers, heads=n_heads, attn_dropout=dropout["transformer"],
                                                        ff_dropout=dropout["transformer"], rotary_embed=rotary_embed, ff_mult=ff_mult, dim_head=head_dim, norm_output=True)
 
@@ -80,7 +82,7 @@ class BeatThis(nn.Module):
         self.apply(self._init_weights)
 
     @staticmethod
-    def make_stem(spect_dim, stem_dim):
+    def make_stem(spect_dim: int, stem_dim: int) -> nn.Module:
         return nn.Sequential(
             OrderedDict(
                 rearrange_tf=Rearrange("b t f -> b f t"),
@@ -93,7 +95,9 @@ class BeatThis(nn.Module):
         )
 
     @staticmethod
-    def make_frontend_block(in_dim, out_dim, partial_transformers=True, head_dim=None, rotary_embed=None, dropout=0):
+    def make_frontend_block(in_dim: int, out_dim: int, partial_transformers: bool=True, head_dim: int|None=32, rotary_embed: RotaryEmbedding | None=None, dropout: float=0.1) -> nn.Module:
+        if partial_transformers and (head_dim is None or rotary_embed is None):
+            raise ValueError("Must specify head_dim and rotary_embed for using partial_transformers")
         return nn.Sequential(
             OrderedDict(
                 partial=PartialFTTransformer(
@@ -113,7 +117,7 @@ class BeatThis(nn.Module):
         )
 
     @staticmethod
-    def _init_weights(module):
+    def _init_weights(module: nn.Module):
         if isinstance(module, (nn.Linear, nn.Conv1d)):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
             if module.bias is not None:
@@ -151,9 +155,10 @@ class PartialRoformer(nn.Module):
     """
     Takes a (batch, channels, freqs, time) input, applies self-attention and
     a feed-forward block either only across frequencies or only across time.
+    Returns a tensor of the same shape as the input.
     """
 
-    def __init__(self, dim, dim_head, n_head, direction, rotary_embed, dropout):
+    def __init__(self, dim: int, dim_head: int, n_head: int, direction: str, rotary_embed: RotaryEmbedding, dropout: float):
         super().__init__()
 
         assert dim % dim_head == 0, "dim must be divisible by dim_head"
@@ -181,12 +186,12 @@ class PartialRoformer(nn.Module):
 class PartialFTTransformer(nn.Module):
     """
     Takes a (batch, channels, freqs, time) input, applies self-attention and
-    a feed-forward block alternatively across frequencies and across time.
-
-    Returns a tensor of the same shape as the input.
+    a feed-forward block once across frequencies and once across time. Same
+    as applying two PartialRoformer() in sequence, but encapsulated in a single
+    module. Returns a tensor of the same shape as the input.
     """
 
-    def __init__(self, dim, dim_head, n_head, rotary_embed, dropout):
+    def __init__(self, dim: int, dim_head: int, n_head: int, rotary_embed: RotaryEmbedding, dropout: float):
         super().__init__()
 
         assert dim % dim_head == 0, "dim must be divisible by dim_head"
@@ -229,7 +234,7 @@ class SumHead(nn.Module):
         # separate beat from downbeat
         beat, downbeat = rearrange(beat_downbeat, "b t c -> c b t", c=2)
         # aggregate beats and downbeats prediction
-        # autocast is necessary to avoid numerical issues causing NaNs
+        # autocast to float16 disabled to avoid numerical issues causing NaNs
         with torch.autocast(beat.device.type, enabled=False):
             beat = beat.float() + downbeat.float()
         return {"beat":beat, "downbeat": downbeat}
