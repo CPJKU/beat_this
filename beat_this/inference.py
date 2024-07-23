@@ -13,6 +13,47 @@ from beat_this.utils import replace_state_dict_key, save_beat_tsv
 CHECKPOINT_URL = "https://cloud.cp.jku.at/index.php/s/7ik4RrBKTS273gp"
 
 
+def load_checkpoint(
+    checkpoint_path: str, device: str | torch.device = "cpu"
+) -> dict:
+    """
+    Load a BeatThis checkpoint as a dictionary.
+
+    Args:
+        checkpoint_path (str, optional): The path to the checkpoint. Can be a local path, a URL, or a shortname.
+        device (torch.device or str): The device to load the model on.
+
+    Returns:
+        dict: The loaded checkpoint dictionary.
+    """
+    try:
+        # try interpreting as local file name
+        return torch.load(checkpoint_path, map_location=device)
+    except FileNotFoundError:
+        try:
+            if not (
+                str(checkpoint_path).startswith("https://")
+                or str(checkpoint_path).startswith("http://")
+            ):
+                # interpret it as a name of one of our checkpoints
+                checkpoint_url = f"{CHECKPOINT_URL}/download?path=%2F&files={checkpoint_path}.ckpt"
+                file_name = f"beat_this-{checkpoint_path}.ckpt"
+            else:
+                # try interpreting as a URL
+                checkpoint_url = checkpoint_path
+                file_name = None
+            return torch.hub.load_state_dict_from_url(
+                checkpoint_url,
+                file_name=file_name,
+                map_location=device,
+            )
+        except Exception:
+            raise ValueError(
+                "Could not load the checkpoint given the provided name",
+                checkpoint_path,
+            )
+
+
 def load_model(
     checkpoint_path: str | None = "final0", device: str | torch.device = "cpu"
 ) -> BeatThis:
@@ -27,32 +68,7 @@ def load_model(
         BeatThis: The loaded model.
     """
     if checkpoint_path is not None:
-        try:
-            # try interpreting as local file name
-            checkpoint = torch.load(checkpoint_path, map_location=device)
-        except FileNotFoundError:
-            try:
-                if not (
-                    str(checkpoint_path).startswith("https://")
-                    or str(checkpoint_path).startswith("http://")
-                ):
-                    # interpret it as a name of one of our checkpoints
-                    checkpoint_url = f"{CHECKPOINT_URL}/download?path=%2F&files={checkpoint_path}.ckpt"
-                    file_name = f"beat_this-{checkpoint_path}.ckpt"
-                else:
-                    # try interpreting as a URL
-                    checkpoint_url = checkpoint_path
-                    file_name = None
-                checkpoint = torch.hub.load_state_dict_from_url(
-                    checkpoint_url,
-                    file_name=file_name,
-                    map_location=device,
-                )
-            except Exception:
-                raise ValueError(
-                    "Could not load the checkpoint given the provided name",
-                    checkpoint_path,
-                )
+        checkpoint = load_checkpoint(checkpoint_path, device)
         # Retrieve the model hyperparameters as it could be the small model
         hparams = checkpoint["hyper_parameters"]
         # Filter only those hyperparameters that apply to the model itself
