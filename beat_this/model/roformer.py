@@ -145,7 +145,6 @@ class Transformer(Module):
         norm_output = True,
         rotary_embed = None,
         gating = True,
-        return_all_layers = False,
     ):
         super().__init__()
         self.layers = ModuleList([])
@@ -158,12 +157,10 @@ class Transformer(Module):
             ]))
 
         self.norm = RMSNorm(dim) if norm_output else nn.Identity()
-        self.return_all_layers = return_all_layers
 
     def forward(self, x):
         for attn, ff in self.layers:
-            attn_x = attn(x)
-            x = attn_x + x
+            x = attn(x) + x
             x = ff(x) + x
         x = self.norm(x)
         return x
