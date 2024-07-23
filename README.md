@@ -1,16 +1,6 @@
 # Beat This!
 Official implementation of the beat tracker from the ISMIR 2024 paper "Beat This! Accurate Beat Tracking Without DBN Postprocessing".
 
-## Available models
-We release 3 main models, which were trained on all data, except the GTZAN dataset, with three different seeds. You can use them with the shortcut `final0`, `final1`, and `final2`. These correspond to "Our System" in Table 2 on the paper.
-Please be aware that, as the models ```final*``` were trained on all data except the GTZAN dataset, the results may be unfairly good, if you run the inference on some data that was used for training.
-
-The K-Fold models and single split from the paper are also available.
-
-All the models are provided as pytorch lightning checkpoints, stripped of the optimizer state to reduce their size. This is useful for reproducing the paper results.
-During inference, PyTorch lighting is not used, and the checkpoints are converted and loaded into vanilla PyTorch modules.
-
-
 ## Inference
 
 To predict beats for audio files, you can either use our command line tool or call the beat tracker from Python. Both have the same requirements.
@@ -70,25 +60,42 @@ save_beat_tsv(beats, downbeats, outpath)
 ```
 If you already have an audio tensor loaded, instead of `File2Beats`, use `Audio2Beats` and pass the tensor and its sample rate.
 
+## Available models
+We release 3 main models, which were trained on all data, except the GTZAN dataset, with three different seeds. You can use them with the shortcut `final0`, `final1`, and `final2`. These correspond to "Our System" in Table 2 on the paper.
+The commands above use `final0` as default, but it is possible to set another model with the dedicated command line option or Python parameter.
+
+Please be aware that, as the models ```final*``` were trained on all data except the GTZAN dataset, the results may be unfairly good, if you run the inference on some data that was used for training.
+
+All the models are provided as pytorch lightning checkpoints, stripped of the optimizer state to reduce their size. This is useful for reproducing the paper results.
+During inference, PyTorch lighting is not used, and the checkpoints are converted and loaded into vanilla PyTorch modules.
+
+*This part will be completed soon.*
 
 ## Training
 
-This part will be available soon.
+*This part will be available soon.*
 
 
 ## Reproducing metrics from the paper
 
-This part will be completed soon.
+Compute results on the test set (GTZAN) corresponding to Table 2 in the paper.
 
-Compute results on the test set (GTZAN):
-```
+Main results for our system:
+```bash
 python launch_scripts/compute_paper_metrics.py --models final0 final1 final2 --datasplit test
 ```
 
-Compute k-fold results:
+Smaller model:
+```bash
+python launch_scripts/compute_paper_metrics.py --models small0 small1 small2 --datasplit test
 ```
-python launch_scripts/compute_paper_metrics.py --aggregation-type k-fold --models checkpoints/fold0.ckpt checkpoints/fold1.ckpt checkpoints/fold2.ckpt checkpoints/fold3.ckpt checkpoints/fold4.ckpt checkpoints/fold5.ckpt checkpoints/fold6.ckpt checkpoints/fold7.ckpt 
+
+With DBN (this requires installing the madmom package):
+```bash
+python launch_scripts/compute_paper_metrics.py --models final0 final1 final2 --datasplit test --dbn
 ```
+
+*This part will be completed soon.*
 
 
 ## Citation
