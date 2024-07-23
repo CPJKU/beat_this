@@ -1,5 +1,14 @@
 # Beat This!
-Official implementation of the beat tracker from the ISMIR 2024 paper "Beat This! Accurate Beat Tracking Without DBN Postprocessing".
+Official implementation of the beat tracker from the ISMIR 2024 paper "Beat This! Accurate Beat Tracking Without DBN Postprocessing" by Francesco Foscarin, Jan Schlüter and Gerhard Widmer.
+
+* [Inference](#inference)
+* [Available models](#available-models)
+* [Reproducing metrics from the paper](#reproducing-metrics-from-the-paper)
+* [Training](#training)
+* [Reusing the loss](#reusing-the-loss)
+* [Reusing the model](#reusing-the-model)
+* [Citation](#citation)
+
 
 ## Inference
 
@@ -58,25 +67,30 @@ from beat_this.utils import save_beat_tsv
 output_path = "path/to/output.beats"
 save_beat_tsv(beats, downbeats, outpath)
 ```
-If you already have an audio tensor loaded, instead of `File2Beats`, use `Audio2Beats` and pass the tensor and its sample rate.
+If you already have an audio tensor loaded, instead of `File2Beats`, use `Audio2Beats` and pass the tensor and its sample rate. We also provide `Audio2Frames` for framewise logits and `Spect2Frames` for spectrogram inputs.
+
 
 ## Available models
-We release 3 main models, which were trained on all data, except the GTZAN dataset, with three different seeds. You can use them with the shortcut `final0`, `final1`, and `final2`. These correspond to "Our System" in Table 2 on the paper.
-The commands above use `final0` as default, but it is possible to set another model with the dedicated command line option or Python parameter.
 
-Please be aware that, as the models ```final*``` were trained on all data except the GTZAN dataset, the results may be unfairly good, if you run the inference on some data that was used for training.
+Models are available for manual download at [our cloud space](https://cloud.cp.jku.at/index.php/s/7ik4RrBKTS273gp), but will also be downloaded automatically by the above inference code. By default, the inference will use `final0`, but it is possible to select another model via a command line option (`--model`) or Python parameter (`checkpoint_path`).
 
-All the models are provided as pytorch lightning checkpoints, stripped of the optimizer state to reduce their size. This is useful for reproducing the paper results.
-During inference, PyTorch lighting is not used, and the checkpoints are converted and loaded into vanilla PyTorch modules.
+* `final0`, `final1`, `final2`: Our main model, which was trained on all data except the GTZAN dataset, with three different seeds. This corresponds to "Our system" in Table 2 of the paper. About 78 MiB per model.
+* `small0`, `small1`, `small2`: A smaller model, again trained on all data except GTZAN, with three different seeds. This corresponds to "smaller model" in Table 2 of the paper. About 8.1 MiB per model.
+* *More models will be added soon.*
 
-*This part will be completed soon.*
+Please be aware that, as the models `final*` and `small*` were trained on all data except the GTZAN dataset, the results may be unfairly good if you run inference on any file from the training datasets.
 
-## Training
-
-*This part will be available soon.*
+All the models are provided as PyTorch Lightning checkpoints, stripped of the optimizer state to reduce their size. This is useful for reproducing the paper results, or verifying the hyper parameters (stored in the checkpoint under `hyper_parameters` and `datamodule_hyper_parameters`).
+During inference, PyTorch Lighting is not used, and the checkpoints are converted and loaded into vanilla PyTorch modules.
 
 
 ## Reproducing metrics from the paper
+
+### Requirements
+
+In addition to the [inference requirements](#requirements), computing evaluation metrics requires PyTorch Lightning and `mir_eval`, as well as obtaining and setting up the GTZAN dataset. *This part will be completed soon.*
+
+### Command line
 
 Compute results on the test set (GTZAN) corresponding to Table 2 in the paper.
 
@@ -96,6 +110,43 @@ python launch_scripts/compute_paper_metrics.py --models final0 final1 final2 --d
 ```
 
 *This part will be completed soon.*
+
+
+## Training
+
+*This part will be available soon.*
+
+
+## Reusing the loss
+
+To reuse our shift-invariant binary cross-entropy loss, just copy out the `ShiftTolerantBCELoss` class from [`loss.py`](beat_this/model/loss.py), it does not have any dependencies.
+
+
+## Reusing the model
+
+To reuse the BeatThis model, you have multiple options:
+
+### From the package
+
+When installing the `beat_this` package, you can directly import the model class:
+```
+from beat_this.model.beat_tracker import BeatThis
+```
+Instantiating this class will give you an untrained model from spectrograms to frame-wise beat and downbeat logits. For a pretrained model, use `load_model`:
+```
+from beat_this.inference import load_model
+beat_this = load_model('final0', device='cuda')
+```
+### From torch.hub
+
+To quickly try the model without installing the package, just install the [requirements for inference](#requirements) and do:
+```
+import torch
+beat_this = torch.hub.load('CPJKU/beat_this', 'beat_this', 'final0', device='cuda')
+```
+### Copy and paste
+
+To copy the BeatThis model into your own project, you will need the [`beat_tracker.py`](beat_this/model/beat_tracker.py) and [`roformer.py`](beat/this/model/roformer.py) files. If you remove the `BeatThis.state_dict()` and `BeatThis._load_from_state_dict()` methods that serve as a workaround for compiled models, then there are no other internal dependencies, only external dependencies (`einops`, `rotary-embedding-torch`).
 
 
 ## Citation
