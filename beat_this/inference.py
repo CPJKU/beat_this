@@ -1,3 +1,5 @@
+import inspect
+
 import torch
 import torch.nn.functional as F
 import soxr
@@ -24,7 +26,6 @@ def load_model(
     Returns:
         BeatThis: The loaded model.
     """
-    model = BeatThis()
     if checkpoint_path is not None:
         try:
             # try interpreting as local file name
@@ -39,6 +40,7 @@ def load_model(
                     checkpoint_url = f"{CHECKPOINT_URL}/download?path=%2F&files={checkpoint_path}.ckpt"
                     file_name = f"beat_this-{checkpoint_path}.ckpt"
                 else:
+                    # try interpreting as a URL
                     checkpoint_url = checkpoint_path
                     file_name = None
                 checkpoint = torch.hub.load_state_dict_from_url(
@@ -51,10 +53,19 @@ def load_model(
                     "Could not load the checkpoint given the provided name",
                     checkpoint_path,
                 )
+        # Retrieve the model hyperparameters as it could be the small model
+        hparams = checkpoint["hyper_parameters"]
+        # Filter only those hyperparameters that apply to the model itself
+        hparams = {k: v for k, v in hparams.items()
+                   if k in set(inspect.signature(BeatThis).parameters)}
+        # Create the uninitialized model
+        model = BeatThis(**hparams)
         # The PLBeatThis (LightningModule) state_dict contains the BeatThis
         # state_dict under the "model." prefix; remove the prefix to load it
         state_dict = replace_state_dict_key(checkpoint["state_dict"], "model.", "")
         model.load_state_dict(state_dict)
+    else:
+        model = BeatThis()
     return model.to(device).eval()
 
 
