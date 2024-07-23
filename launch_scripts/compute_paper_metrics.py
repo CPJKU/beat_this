@@ -8,7 +8,7 @@ import pandas as pd
 
 from beat_this.dataset.dataset import BeatDataModule
 from beat_this.model.pl_module import PLBeatThis
-from beat_this.inference import CHECKPOINT_URL
+from beat_this.inference import load_checkpoint
 
 # for repeatability
 seed_everything(0, workers=True)
@@ -19,11 +19,13 @@ def main(args):
         print("Single model prediction for", args.models[0])
         # single model prediction
         checkpoint_path = args.models[0]
+        checkpoint = load_checkpoint(checkpoint_path)
+
         # create datamodule
-        datamodule = datamodule_setup(checkpoint_path, args.num_workers, args.datasplit)
+        datamodule = datamodule_setup(checkpoint, args.num_workers, args.datasplit)
         # create model and trainer
         model, trainer = plmodel_setup(
-            checkpoint_path, args.eval_trim_beats, args.dbn, args.gpu
+            checkpoint, args.eval_trim_beats, args.dbn, args.gpu
         )
         # predict
         metrics, dataset, preds, piece = compute_predictions(
@@ -53,15 +55,15 @@ def main(args):
         if args.aggregation_type == "mean-std":
             # computing result variability for the same dataset and different model seeds
             # create datamodule only once, as we assume it is the same for all models
+            checkpoint = load_checkpoint(args.models[0])
             datamodule = datamodule_setup(
-                args.models[0], args.num_workers, args.datasplit
+                checkpoint, args.num_workers, args.datasplit
             )
             # create model and trainer
             all_metrics = []
             for checkpoint_path in args.models:
-                model, trainer = plmodel_setup(
-                    checkpoint_path, args.eval_trim_beats, args.dbn, args.gpu
-                )
+                checkpoint = load_checkpoint(checkpoint_path)
+                model, trainer = plmodel_setup(checkpoint, args.eval_trim_beats, args.dbn, args.gpu)
 
                 metrics, dataset, preds, piece = compute_predictions(
                     model, trainer, datamodule.predict_dataloader()
@@ -92,12 +94,13 @@ def main(args):
             # create datamodule for each model
             for i_model, checkpoint_path in enumerate(args.models):
                 print(f"Model {i_model+1}/{len(args.models)}")
+                checkpoint = load_checkpoint(checkpoint_path)
                 datamodule = datamodule_setup(
-                    checkpoint_path, args.num_workers, args.datasplit
+                    checkpoint, args.num_workers, args.datasplit
                 )
                 # create model and trainer
                 model, trainer = plmodel_setup(
-                    checkpoint_path, args.eval_trim_beats, args.dbn, args.gpu
+                    checkpoint, args.eval_trim_beats, args.dbn, args.gpu
                 )
                 # predict
                 metrics, dataset, preds, piece = compute_predictions(
@@ -137,31 +140,11 @@ def main(args):
             raise ValueError(f"Unknown aggregation type {args.aggregation_type}")
 
 
-def datamodule_setup(checkpoint_path, num_workers, datasplit):
+def datamodule_setup(checkpoint, num_workers, datasplit):
     # Load the datamodule
     print("Creating datamodule")
     data_dir = Path(__file__).parent.parent.relative_to(Path.cwd()) / "data"
-    try:
-        # try interpreting as local file name
-        datamodule_hparams = torch.load(checkpoint_path, map_location="cpu")[
-            "datamodule_hyper_parameters"
-        ]
-    except FileNotFoundError:
-        try:
-            if not (
-                str(checkpoint_path).startswith("https://")
-                or str(checkpoint_path).startswith("http://")
-            ):
-                # interpret it as a name of one of our checkpoints
-                checkpoint_path = f"{CHECKPOINT_URL}/download?path=%2F&files={checkpoint_path}.ckpt"
-            datamodule_hparams = torch.hub.load_state_dict_from_url(
-                checkpoint_path, map_location="cpu"
-            )["datamodule_hyper_parameters"]
-        except Exception as e:
-            raise ValueError(
-                "Could not load the checkpoint given the provided name",
-                checkpoint_path,
-            )
+    datamodule_hparams = checkpoint["datamodule_hyper_parameters"]
     # update the hparams with the ones from the arguments
     if num_workers is not None:
         datamodule_hparams["num_workers"] = num_workers
@@ -172,12 +155,12 @@ def datamodule_setup(checkpoint_path, num_workers, datasplit):
     return datamodule
 
 
-def plmodel_setup(checkpoint_path, eval_trim_beats, dbn, gpu):
+def plmodel_setup(checkpoint, eval_trim_beats, dbn, gpu):
     """
     Set up the pytorch lightning model and trainer for evaluation.
 
     Args:
-        checkpoint_path (str): The path to the checkpoint file. Can be a local path, a URL, or a key in CHECKPOINT_URL.
+        checkpoint_path (dict): The dict containing the checkpoint to load.
         eval_trim_beats (int or None): The number of beats to trim during evaluation. If None, the setting is taken from the pretrained model.
         dbn (bool or None): Whether to use the Dynamic Bayesian Network (DBN) module during evaluation. If None, the default behavior from the pretrained model is used.
         gpu (int): The index of the GPU device to use for training.
@@ -192,26 +175,12 @@ def plmodel_setup(checkpoint_path, eval_trim_beats, dbn, gpu):
     if dbn is not None:
         model_hparams["use_dbn"] = dbn
 
-    try:
-        # try interpreting as local file name
-        model = PLBeatThis.load_from_checkpoint(
-        checkpoint_path, map_location="cpu", **model_hparams)
-    except FileNotFoundError:
-        try:
-            if not (
-                str(checkpoint_path).startswith("https://")
-                or str(checkpoint_path).startswith("http://")
-            ):
-                # interpret it as a name of one of our checkpoints
-                checkpoint_path = f"{CHECKPOINT_URL}/download?path=%2F&files={checkpoint_path}.ckpt"
-            model = PLBeatThis.load_from_checkpoint(
-                checkpoint_path, map_location="cpu", **model_hparams)
-        except Exception as e:
-            raise ValueError(
-                "Could not load the checkpoint given the provided name",
-                checkpoint_path,
-            )
+    # temporary fix, to remove once all checkpoints are updated
+    if "predict_full_pieces" in checkpoint["hyper_parameters"]:
+        del checkpoint["hyper_parameters"]["predict_full_pieces"]
     
+    model = PLBeatThis(**checkpoint['hyper_parameters'])
+    model.load_state_dict(checkpoint['state_dict'])
     # set correct device and accelerator
     if gpu >= 0:
         devices = [gpu]
