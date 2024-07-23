@@ -71,6 +71,11 @@ def get_parser():
         default=0,
         help="Which GPU to use (not the number of GPUs), or -1 for CPU. Ignored if CUDA is not available. (default: %(default)s)",
     )
+    parser.add_argument(
+        "--float16",
+        action="store_true",
+        help="If given, uses half precision floating point arithmetics. Required for flash attention on GPU. (default: %(default)s)",
+    )
     return parser
 
 
@@ -96,7 +101,7 @@ def derive_output_path(input_path, suffix, append, output=None, parent=None):
         return output_path.with_suffix(suffix)
 
 
-def run(inputs, model, output, suffix, append, skip_existing, touch_first, dbn, gpu):
+def run(inputs, model, output, suffix, append, skip_existing, touch_first, dbn, gpu, float16):
     # determine device
     if torch.cuda.is_available() and gpu >= 0:
         device = torch.device(f"cuda:{gpu}")
@@ -104,7 +109,7 @@ def run(inputs, model, output, suffix, append, skip_existing, touch_first, dbn, 
         device = torch.device("cpu")
 
     # prepare model
-    file2file = File2File(model, device, dbn)
+    file2file = File2File(model, device, float16, dbn)
 
     # process inputs
     inputs = [Path(item) for item in inputs]

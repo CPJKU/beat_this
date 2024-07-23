@@ -221,21 +221,23 @@ class Spect2Frames:
     Class for extracting framewise beat and downbeat predictions (logits) from a spectrogram.
     """
 
-    def __init__(self, checkpoint_path="final0", device="cpu"):
+    def __init__(self, checkpoint_path="final0", device="cpu", float16=False):
         super().__init__()
         self.device = torch.device(device)
+        self.float16 = float16
         self.model = load_model(checkpoint_path, self.device)
 
     def spect2frames(self, spect):
         with torch.inference_mode():
-            model_prediction = split_predict_aggregate(
-                spect=spect,
-                chunk_size=1500,
-                overlap_mode="keep_first",
-                border_size=6,
-                model=self.model,
-            )
-        return model_prediction["beat"], model_prediction["downbeat"]
+            with torch.autocast(enabled=self.float16, device_type=self.device.type):
+                model_prediction = split_predict_aggregate(
+                    spect=spect,
+                    chunk_size=1500,
+                    overlap_mode="keep_first",
+                    border_size=6,
+                    model=self.model,
+                )
+        return model_prediction["beat"].float(), model_prediction["downbeat"].float()
 
     def __call__(self, spect):
         return self.spect2frames(spect)
@@ -246,8 +248,8 @@ class Audio2Frames(Spect2Frames):
     Class for extracting framewise beat and downbeat predictions (logits) from an audio tensor.
     """
 
-    def __init__(self, checkpoint_path="final0", device="cpu"):
-        super().__init__(checkpoint_path, device)
+    def __init__(self, checkpoint_path="final0", device="cpu", float16=False):
+        super().__init__(checkpoint_path, device, float16)
         self.spect = LogMelSpect(device=self.device)
 
     def signal2spect(self, signal, sr):
@@ -272,11 +274,12 @@ class Audio2Beats(Audio2Frames):
     Args:
         checkpoint_path (str): Path to the model checkpoint file. It can be a local path, a URL, or a key from the CHECKPOINT_URL dictionary. Default is "final0", which will load the model trained on all data except GTZAN with seed 0.
         device (str): Device to use for inference. Default is "cpu".
+        float16 (bool): Whether to use half precision floating point arithmetic. Default is False.
         dbn (bool): Whether to use the madmom DBN for post-processing. Default is False.
     """
 
-    def __init__(self, checkpoint_path="final0", device="cpu", dbn=False):
-        super().__init__(checkpoint_path, device)
+    def __init__(self, checkpoint_path="final0", device="cpu", float16=False, dbn=False):
+        super().__init__(checkpoint_path, device, float16)
         self.frames2beats = Postprocessor(type="dbn" if dbn else "minimal")
 
     def __call__(self, signal, sr):
