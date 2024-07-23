@@ -1,4 +1,7 @@
-### Adapted from https://github.com/lucidrains/BS-RoFormer/tree/main ######
+"""
+Transformer with rotary position embedding, adapted from Phil Wang's repository
+at https://github.com/lucidrains/BS-RoFormer (under MIT License).
+"""
 
 import torch
 from torch import nn
@@ -26,7 +29,7 @@ class RMSNorm(Module):
     def forward(self, x):
         return F.normalize(x, dim=self.dim) * self.scale * self.gamma
 
-# attention
+# feedforward
 
 class FeedForward(Module):
     def __init__(
@@ -52,6 +55,28 @@ class FeedForward(Module):
 
     def forward(self, x):
         return self.net(x)
+
+# attention
+
+class Attend(nn.Module):
+    def __init__(
+        self,
+        dropout = 0.,
+        scale = None
+    ):
+        super().__init__()
+        self.dropout = dropout
+        self.scale = scale
+
+    def forward(self, q, k, v):
+        if exists(self.scale):
+            default_scale = q.shape[-1] ** -0.5
+            q = q * (self.scale / default_scale)
+
+        return F.scaled_dot_product_attention(
+            q, k, v,
+            dropout_p = self.dropout if self.training else 0.
+        )
 
 
 class Attention(Module):
@@ -104,6 +129,8 @@ class Attention(Module):
         out = rearrange(out, 'b h n d -> b n (h d)')
         return self.to_out(out)
 
+# Roformer
+
 class Transformer(Module):
     def __init__(
         self,
@@ -140,24 +167,3 @@ class Transformer(Module):
             x = ff(x) + x
         x = self.norm(x)
         return x
-
-
-class Attend(nn.Module):
-    def __init__(
-        self,
-        dropout = 0.,
-        scale = None
-    ):
-        super().__init__()
-        self.dropout = dropout
-        self.scale = scale
-
-    def forward(self, q, k, v):
-        if exists(self.scale):
-            default_scale = q.shape[-1] ** -0.5
-            q = q * (self.scale / default_scale)
-
-        return F.scaled_dot_product_attention(
-            q, k, v,
-            dropout_p = self.dropout if self.training else 0.
-        )
