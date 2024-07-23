@@ -256,9 +256,9 @@ class PLBeatThis(LightningModule):
             )
         # compute border size according to the loss type
         if hasattr(
-            self.beat_loss, "spread_targets"
+            self.beat_loss, "tolerance"
         ):  # discard the edges that are affected by the max-pooling in the loss
-            border_size = self.beat_loss.spread_targets
+            border_size = 2 * self.beat_loss.tolerance
         else:
             border_size = 0
         model_prediction = split_predict_aggregate(

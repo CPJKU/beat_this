@@ -106,11 +106,12 @@ class SplittedShiftTolerantBCELoss(torch.nn.Module):
         spread_preds (int): amount of temporal max-pooling applied to predictions
     """
 
-    def __init__(self, pos_weight: float = 1, spread_preds: int = 3):
+    def __init__(self, pos_weight: float = 1, tolerance: int = 3):
         super().__init__()
-        self.spread_preds = spread_preds
+        self.tolerance = 3
+        self.spread_preds = tolerance
         self.spread_targets = (
-            2 * spread_preds
+            2 * tolerance
         )  # targets are always spreaded twice as much
         self.register_buffer(
             "pos_weight",
