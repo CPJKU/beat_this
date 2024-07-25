@@ -3,6 +3,7 @@ Official implementation of the beat tracker from the ISMIR 2024 paper "Beat This
 
 * [Inference](#inference)
 * [Available models](#available-models)
+* [Data](#data)
 * [Reproducing metrics from the paper](#reproducing-metrics-from-the-paper)
 * [Training](#training)
 * [Reusing the loss](#reusing-the-loss)
