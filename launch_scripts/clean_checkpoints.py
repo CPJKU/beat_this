@@ -23,7 +23,6 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--checkpoint-folder", type=str, default="../checkpoints")
     parser.add_argument("--input-path", type=str, required=True)
     parser.add_argument("--output-path", type=str, required=True)
 
