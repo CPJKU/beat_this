@@ -74,11 +74,27 @@ If you already have an audio tensor loaded, instead of `File2Beats`, use `Audio2
 
 Models are available for manual download at [our cloud space](https://cloud.cp.jku.at/index.php/s/7ik4RrBKTS273gp), but will also be downloaded automatically by the above inference code. By default, the inference will use `final0`, but it is possible to select another model via a command line option (`--model`) or Python parameter (`checkpoint_path`).
 
-* `final0`, `final1`, `final2`: Our main model, which was trained on all data except the GTZAN dataset, with three different seeds. This corresponds to "Our system" in Table 2 of the paper. About 78 MiB per model.
-* `small0`, `small1`, `small2`: A smaller model, again trained on all data except GTZAN, with three different seeds. This corresponds to "smaller model" in Table 2 of the paper. About 8.1 MiB per model.
-* *More models will be added soon.*
+Main models:
+* `final0`, `final1`, `final2`: Our main model, trained on all data except the GTZAN dataset, with three different seeds. This corresponds to "Our system" in Table 2 of the paper. About 78 MB per model.
+* `small0`, `small1`, `small2`: A smaller model, again trained on all data except GTZAN, with three different seeds. This corresponds to "smaller model" in Table 2 of the paper. About 8.1 MB per model.
+* `single_final0`, `single_final1`, `single_final2` : Our main model, trained on the single split described in Section 4.1 of the paper, with three different seeds. This correspong to "Our system" in Table 3 of the paper. About 78 MB per model.
+* `fold0`, `fold1`, `fold2`, `fold3`, `fold4`, `fold5`, `fold6`, `fold7`: Our main model, trained in the 8-fold cross validation setting with a single seed per fold. This correspond to "Our" in Table 1 of the paper. About 78 MB per model.
 
-Please be aware that, as the models `final*` and `small*` were trained on all data except the GTZAN dataset, the results may be unfairly good if you run inference on any file from the training datasets.
+Other models, available mainly for result reproducibility:
+* `hung0`, `hung1`, `hung2`: A model trained on all the data used by the "Modeling Beats and Downbeats with a Time-Frequency Transformer" system by Hung et al. (except GTZAN dataset), with three different seeds. This corresponds to "limited to data of [10]" in Table 2 of the paper.
+* the other models used for the ablation studies in Table 3, all trained with 3 seeds on the single split described in Section 4.1 of the paper:
+    * `single_notempoaug0`, `single_notempoaug1`, `single_notempoaug2`
+    * `single_nosumhead0`, `single_nosumhead1`, `single_nosumhead2`
+    * `single_nomaskaug0`, `single_nomaskaug1`, `single_nomaskaug2`
+    * `single_nopartialt0`, `single_nopartialt1`, `single_nopartialt2`
+    * `single_bceposweight0`, `single_bceposweight1`, `single_bceposweight2`
+    * `single_nopitchaug0`, `single_nopitchaug1`, `single_nopitchaug2`
+    * `single_bcenoposweight0`, `single_bcenoposweight1`, `single_bcenoposweight2`
+
+
+Please be aware that the results may be unfairly good if you run inference on any file from the training datasets. For example, an evaluation with `final*` or `small*` can only be performed fairly on GTZAN or other datasets we didn't consider in our paper.
+
+If you need to run evalution on some datasets we used other than GTZAN, consider targeting the validation part of the single split (with `single_final*`), or of the 8-fold cross-validation (with `fold*`).
 
 All the models are provided as PyTorch Lightning checkpoints, stripped of the optimizer state to reduce their size. This is useful for reproducing the paper results, or verifying the hyper parameters (stored in the checkpoint under `hyper_parameters` and `datamodule_hyper_parameters`).
 During inference, PyTorch Lighting is not used, and the checkpoints are converted and loaded into vanilla PyTorch modules.
