@@ -99,6 +99,11 @@ If you need to run evalution on some datasets we used other than GTZAN, consider
 All the models are provided as PyTorch Lightning checkpoints, stripped of the optimizer state to reduce their size. This is useful for reproducing the paper results, or verifying the hyper parameters (stored in the checkpoint under `hyper_parameters` and `datamodule_hyper_parameters`).
 During inference, PyTorch Lighting is not used, and the checkpoints are converted and loaded into vanilla PyTorch modules.
 
+## Data
+
+*This part will be available soon.*
+
+
 
 ## Reproducing metrics from the paper
 
