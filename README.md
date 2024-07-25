@@ -77,8 +77,8 @@ Models are available for manual download at [our cloud space](https://cloud.cp.j
 Main models:
 * `final0`, `final1`, `final2`: Our main model, trained on all data except the GTZAN dataset, with three different seeds. This corresponds to "Our system" in Table 2 of the paper. About 78 MB per model.
 * `small0`, `small1`, `small2`: A smaller model, again trained on all data except GTZAN, with three different seeds. This corresponds to "smaller model" in Table 2 of the paper. About 8.1 MB per model.
-* `single_final0`, `single_final1`, `single_final2` : Our main model, trained on the single split described in Section 4.1 of the paper, with three different seeds. This correspong to "Our system" in Table 3 of the paper. About 78 MB per model.
-* `fold0`, `fold1`, `fold2`, `fold3`, `fold4`, `fold5`, `fold6`, `fold7`: Our main model, trained in the 8-fold cross validation setting with a single seed per fold. This correspond to "Our" in Table 1 of the paper. About 78 MB per model.
+* `single_final0`, `single_final1`, `single_final2` : Our main model, trained on the single split described in Section 4.1 of the paper, with three different seeds. This corresponds to "Our system" in Table 3 of the paper. About 78 MB per model.
+* `fold0`, `fold1`, `fold2`, `fold3`, `fold4`, `fold5`, `fold6`, `fold7`: Our main model, trained in the 8-fold cross validation setting with a single seed per fold. This corresponds to "Our" in Table 1 of the paper. About 78 MB per model.
 
 Other models, available mainly for result reproducibility:
 * `hung0`, `hung1`, `hung2`: A model trained on all the data used by the "Modeling Beats and Downbeats with a Time-Frequency Transformer" system by Hung et al. (except GTZAN dataset), with three different seeds. This corresponds to "limited to data of [10]" in Table 2 of the paper.
@@ -94,7 +94,7 @@ Other models, available mainly for result reproducibility:
 
 Please be aware that the results may be unfairly good if you run inference on any file from the training datasets. For example, an evaluation with `final*` or `small*` can only be performed fairly on GTZAN or other datasets we didn't consider in our paper.
 
-If you need to run evalution on some datasets we used other than GTZAN, consider targeting the validation part of the single split (with `single_final*`), or of the 8-fold cross-validation (with `fold*`).
+If you need to run an evaluation on some datasets we used other than GTZAN, consider targeting the validation part of the single split (with `single_final*`), or of the 8-fold cross-validation (with `fold*`).
 
 All the models are provided as PyTorch Lightning checkpoints, stripped of the optimizer state to reduce their size. This is useful for reproducing the paper results, or verifying the hyper parameters (stored in the checkpoint under `hyper_parameters` and `datamodule_hyper_parameters`).
 During inference, PyTorch Lighting is not used, and the checkpoints are converted and loaded into vanilla PyTorch modules.
