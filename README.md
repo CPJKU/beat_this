@@ -13,7 +13,11 @@ Official implementation of the beat tracker from the ISMIR 2024 paper "Beat This
 
 ## Inference
 
-To predict beats for audio files, you can either use our command line tool or call the beat tracker from Python. Both have the same requirements.
+To predict beats for audio files, you can either use our command line tool or call the beat tracker from Python. Both have the same requirements, unless you go for the online demo.
+
+### Online demo
+
+To process a small set of audio files without installing anything, [open our example notebook in Google Colab](https://colab.research.google.com/github/CPJKU/beat_this/blob/main/beat_this_example.ipynb) and follow the instructions.
 
 ### Requirements
 
