@@ -24,7 +24,7 @@ The beat tracker requires Python with a set of packages installed:
 
 Finally, install our beat tracker with:
 ```bash
-pip install https://github.com/CPJKU/beat_this/archive/master.zip
+pip install https://github.com/CPJKU/beat_this/archive/main.zip
 ```
 
 ### Command line
