@@ -1,6 +1,7 @@
 """
 Model definitions for the Beat This! beat tracker.
 """
+
 from collections import OrderedDict
 
 import torch
@@ -72,8 +73,10 @@ class BeatThis(nn.Module):
         frontend_blocks = nn.Sequential(*frontend_blocks)
         # - linear projection to transformer dimensionality
         concat = Rearrange("b c f t -> b t (c f)")
-        last_linear = nn.Linear(dim * spect_dim, transformer_dim)
-        self.frontend = nn.Sequential(stem, frontend_blocks, concat, last_linear)
+        linear = nn.Linear(dim * spect_dim, transformer_dim)
+        self.frontend = nn.Sequential(
+            OrderedDict(stem=stem, blocks=frontend_blocks, concat=concat, linear=linear)
+        )
 
         # create the transformer blocks
         assert (
