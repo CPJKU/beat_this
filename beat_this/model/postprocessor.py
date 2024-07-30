@@ -106,6 +106,8 @@ class Postprocessor:
             for i, d_time in enumerate(downbeat_time):
                 beat_idx = np.argmin(np.abs(beat_time - d_time))
                 downbeat_time[i] = beat_time[beat_idx]
+        # remove duplicate downbeat times (if some db were moved to the same position)
+        downbeat_time = np.unique(downbeat_time)
         return beat_time, downbeat_time
 
     def postp_dbn(self, beat, downbeat, padding_mask):
