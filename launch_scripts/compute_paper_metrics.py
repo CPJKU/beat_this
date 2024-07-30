@@ -85,7 +85,8 @@ def main(args):
             # print all metrics
             print("Metrics")
             for k, v in all_metrics_stats.items():
-                print(f"{k}: {v[0]} +- {v[1]}")
+                # round to 3 decimal places
+                print(f"{k}: {round(v[0],3)} +- {round(v[1],3)}")
         elif args.aggregation_type == "k-fold":
             # computing results in the K-fold setting. Every fold has a different dataset
             all_piece_metrics = []
@@ -134,7 +135,7 @@ def main(args):
             for k, v in dataset_metrics.items():
                 print(k)
                 for d, value in v.items():
-                    print(f"{d}: {value}")
+                    print(f"{d}: {round(value,3)}")
                 print("------")
         else:
             raise ValueError(f"Unknown aggregation type {args.aggregation_type}")
@@ -169,15 +170,10 @@ def plmodel_setup(checkpoint, eval_trim_beats, dbn, gpu):
         tuple: A tuple containing the initialized pytorch lightning model and trainer.
 
     """
-    model_hparams = {}
     if eval_trim_beats is not None:
-        model_hparams["eval_trim_beats"] = eval_trim_beats
+        checkpoint["hyper_parameters"]["eval_trim_beats"] = eval_trim_beats
     if dbn is not None:
-        model_hparams["use_dbn"] = dbn
-
-    # temporary fix, to remove once all checkpoints are updated
-    if "predict_full_pieces" in checkpoint["hyper_parameters"]:
-        del checkpoint["hyper_parameters"]["predict_full_pieces"]
+        checkpoint["hyper_parameters"]["use_dbn"] = dbn
     
     model = PLBeatThis(**checkpoint['hyper_parameters'])
     model.load_state_dict(checkpoint['state_dict'])
