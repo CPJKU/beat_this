@@ -13,9 +13,7 @@ from beat_this.utils import replace_state_dict_key, save_beat_tsv
 CHECKPOINT_URL = "https://cloud.cp.jku.at/index.php/s/7ik4RrBKTS273gp"
 
 
-def load_checkpoint(
-    checkpoint_path: str, device: str | torch.device = "cpu"
-) -> dict:
+def load_checkpoint(checkpoint_path: str, device: str | torch.device = "cpu") -> dict:
     """
     Load a BeatThis checkpoint as a dictionary.
 
@@ -36,7 +34,9 @@ def load_checkpoint(
                 or str(checkpoint_path).startswith("http://")
             ):
                 # interpret it as a name of one of our checkpoints
-                checkpoint_url = f"{CHECKPOINT_URL}/download?path=%2F&files={checkpoint_path}.ckpt"
+                checkpoint_url = (
+                    f"{CHECKPOINT_URL}/download?path=%2F&files={checkpoint_path}.ckpt"
+                )
                 file_name = f"beat_this-{checkpoint_path}.ckpt"
             else:
                 # try interpreting as a URL
@@ -72,8 +72,11 @@ def load_model(
         # Retrieve the model hyperparameters as it could be the small model
         hparams = checkpoint["hyper_parameters"]
         # Filter only those hyperparameters that apply to the model itself
-        hparams = {k: v for k, v in hparams.items()
-                   if k in set(inspect.signature(BeatThis).parameters)}
+        hparams = {
+            k: v
+            for k, v in hparams.items()
+            if k in set(inspect.signature(BeatThis).parameters)
+        }
         # Create the uninitialized model
         model = BeatThis(**hparams)
         # The PLBeatThis (LightningModule) state_dict contains the BeatThis
@@ -278,7 +281,9 @@ class Audio2Beats(Audio2Frames):
         dbn (bool): Whether to use the madmom DBN for post-processing. Default is False.
     """
 
-    def __init__(self, checkpoint_path="final0", device="cpu", float16=False, dbn=False):
+    def __init__(
+        self, checkpoint_path="final0", device="cpu", float16=False, dbn=False
+    ):
         super().__init__(checkpoint_path, device, float16)
         self.frames2beats = Postprocessor(type="dbn" if dbn else "minimal")
 
