@@ -112,6 +112,8 @@ During inference, PyTorch Lighting is not used, and the checkpoints are converte
 
 ## Reproducing metrics from the paper
 
+*This part won't work until the data release. We still provide the commands for reference*
+
 ### Requirements
 
 In addition to the [inference requirements](#requirements), computing evaluation metrics requires PyTorch Lightning and `mir_eval`, as well as obtaining and setting up the GTZAN dataset. *This part will be completed soon.*
