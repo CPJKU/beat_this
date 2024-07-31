@@ -112,7 +112,7 @@ During inference, PyTorch Lighting is not used, and the checkpoints are converte
 
 ## Reproducing metrics from the paper
 
-*This part won't work until the data release. We still provide the commands for reference*
+*This part won't work until the data release. We still provide the commands for reference.*
 
 ### Requirements
 
@@ -151,42 +151,42 @@ python launch_scripts/compute_paper_metrics.py --models fold0  fold1 fold2 fold3
 
 #### Compute ablation studies on the validation set of the single split, correponding to Table 3 in the paper.
 
-Our system
+Our system:
 ```bash
 python launch_scripts/compute_paper_metrics.py --models single_final0 single_final1 single_final2 --datasplit val
 ```
 
-No sum head
+No sum head:
 ```bash
 python launch_scripts/compute_paper_metrics.py --models single_nosumhead0 single_nosumhead1 single_nosumhead2 --datasplit val
 ```
 
-No tempo augmentation
+No tempo augmentation:
 ```bash
 python launch_scripts/compute_paper_metrics.py --models single_notempoaug0 single_notempoaug1 single_notempoaug2 --datasplit val
 ```
 
-No mask augmentation
+No mask augmentation:
 ```bash
 python launch_scripts/compute_paper_metrics.py --models single_nomaskaug0 single_nomaskaug1 single_nomaskaug2 --datasplit val
 ```
 
-No partial transformers
+No partial transformers:
 ```bash
 python launch_scripts/compute_paper_metrics.py --models single_nopartialt0 single_nopartialt1 single_nopartialt2 --datasplit val
 ```
 
-No shift tolerance
+No shift tolerance:
 ```bash
 python launch_scripts/compute_paper_metrics.py --models single_noshifttol0 single_noshifttol1 single_noshifttol2 --datasplit val
 ```
 
-No pitch augmentation
+No pitch augmentation:
 ```bash
 python launch_scripts/compute_paper_metrics.py --models single_nopitchaug0 single_nopitchaug1 single_nopitchaug2 --datasplit val
 ```
 
-No shift tolerance and no weights
+No shift tolerance and no weights:
 ```bash
 python launch_scripts/compute_paper_metrics.py --models single_noshifttolnoweights0 single_noshifttolnoweights1 single_noshifttolnoweights2  --datasplit val
 ```
