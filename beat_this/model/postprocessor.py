@@ -93,8 +93,8 @@ class Postprocessor:
         beat_peaks = padded_beat_peaks[mask]
         downbeat_peaks = padded_downbeat_peaks[mask]
         # pass from a boolean array to a list of times in frames.
-        beat_frame = torch.nonzero(beat_peaks).cpu().numpy().squeeze()
-        downbeat_frame = torch.nonzero(downbeat_peaks).cpu().numpy().squeeze()
+        beat_frame = torch.nonzero(beat_peaks).cpu().numpy()[:,0]
+        downbeat_frame = torch.nonzero(downbeat_peaks).cpu().numpy()[:,0]
         # remove adjacent peaks
         beat_frame = deduplicate_peaks(beat_frame, width=1)
         downbeat_frame = deduplicate_peaks(downbeat_frame, width=1)
