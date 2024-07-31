@@ -88,6 +88,16 @@ def load_model(
     return model.to(device).eval()
 
 
+def zeropad(spect: torch.Tensor, left: int = 0, right: int = 0):
+    """
+    Pads a tensor spectrogram matrix of shape (time x bins) with `left` frames in the beginning and `right` frames in the end.
+    """
+    if left == 0 and right == 0:
+        return spect
+    else:
+        return F.pad(spect, (0, 0, left, right), "constant", 0)
+
+
 def split_piece(
     spect: torch.Tensor,
     chunk_size: int,
@@ -96,8 +106,8 @@ def split_piece(
 ):
     """
     Split a tensor spectrogram matrix of shape (time x bins) into time chunks of `chunk_size` and return the chunks and starting positions.
-    Consecutive chunks overlap by `border_size`, which is assumed to be discarded in the predictions, since the model
-     is not really trained on this part due to the max-pool in the loss.
+    The `border_size` is the number of frames assumed to be discarded in the predictions on either side (since the model was not trained on the input edges due to the max-pool in the loss).
+    To cater for this, the first and last chunk are padded by `border_size` on the beginning and end, respectively, and consecutive chunks overlap by `border_size`.
     If `avoid_short_end` is true, the last chunk start is shifted left to ends at the end of the piece, therefore the last chunk can potentially overlap with previous chunks more than border_size, otherwise it will be a shorter segment.
     If the piece is shorter than `chunk_size`, avoid_short_end is ignored and the piece is returned as a single shorter chunk.
 
@@ -109,18 +119,20 @@ def split_piece(
     """
     # generate the start and end indices
     starts = np.arange(
-        -border_size, len(spect) - 2 * border_size, chunk_size - 2 * border_size
+        -border_size, len(spect) - border_size, chunk_size - 2 * border_size
     )
-    if avoid_short_end and len(spect) > chunk_size - border_size:
-        # if we avoid short ends, move the last index to the end of the piece - (chunk_size - 2 *border_size)
+    if avoid_short_end and len(spect) > chunk_size - 2 * border_size:
+        # if we avoid short ends, move the last index to the end of the piece - (chunk_size - border_size)
         starts[-1] = len(spect) - (chunk_size - border_size)
     # generate the chunks
     chunks = [
-        spect[max(start, 0) : min(start + chunk_size, len(spect))] for start in starts
+        zeropad(
+            spect[max(start, 0) : min(start + chunk_size, len(spect))],
+            left=max(0, -start),
+            right=max(0, start + chunk_size - len(spect)),
+        )
+        for start in starts
     ]
-    # pad the first and last chunk in the time dimension to account for the border
-    chunks[0] = F.pad(chunks[0], (0, 0, border_size, 0), "constant", 0)
-    chunks[-1] = F.pad(chunks[-1], (0, 0, 0, border_size), "constant", 0)
     return chunks, starts
 
 
