@@ -129,7 +129,7 @@ def split_piece(
         zeropad(
             spect[max(start, 0) : min(start + chunk_size, len(spect))],
             left=max(0, -start),
-            right=max(0, start + chunk_size - len(spect)),
+            right=max(0, min(border_size, start + chunk_size - len(spect))),
         )
         for start in starts
     ]
