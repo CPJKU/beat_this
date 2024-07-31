@@ -70,14 +70,14 @@ def save_beat_tsv(beats: np.ndarray, downbeats: np.ndarray, outpath: str) -> Non
             start_counter = beats_in_first_measure - pickup_beats
         else:
             print(
-                "WARNING: There are more pickup beats than beats in the first measure. This should not happen. The pickup measure will be considered as a normal measure."
+                "WARNING: There are more beats in the pickup measure than in the first measure. The beat count will start from 2 without trying to estimate the length of the pickup measure."
             )
-            start_counter = 0
+            start_counter = 1
     else:
         print(
-            "WARNING: There are less than two downbeats in the predictions. Something may be wrong. No pickup measure will be considered."
+            "WARNING: There are less than two downbeats in the predictions. Something may be wrong. The beat count will start from 2 without trying to estimate the length of the pickup measure."
         )
-        start_counter = 0
+        start_counter = 1
 
     # write the beat file
     Path(outpath).parent.mkdir(parents=True, exist_ok=True)
