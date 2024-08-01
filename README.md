@@ -1,5 +1,5 @@
 # Beat This!
-Official implementation of the beat tracker from the ISMIR 2024 paper "Beat This! Accurate Beat Tracking Without DBN Postprocessing" by Francesco Foscarin, Jan Schlüter and Gerhard Widmer.
+Official implementation of the beat tracker from the ISMIR 2024 paper "[Beat This! Accurate Beat Tracking Without DBN Postprocessing](https://arxiv.org/abs/2407.21658)" by Francesco Foscarin, Jan Schlüter and Gerhard Widmer.
 
 * [Inference](#inference)
 * [Available models](#available-models)
