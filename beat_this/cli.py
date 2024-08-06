@@ -133,7 +133,7 @@ def run(inputs, model, output, suffix, append, skip_existing, touch_first, dbn, 
                         if not skip_existing or not output_path.exists():
                             tasks.append((fn, output_path))
             else:
-                tasks.append((fn, derive_output_path(fn, suffix, append, output)))
+                tasks.append((item, derive_output_path(item, suffix, append, output)))
         # then process all of them
         if tqdm is not None:
             tasks = tqdm.tqdm(tasks)
