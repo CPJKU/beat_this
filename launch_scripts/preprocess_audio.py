@@ -11,7 +11,6 @@ import pandas as pd
 import madmom
 from pedalboard import time_stretch, Pedalboard, PitchShift
 import concurrent.futures
-from git import Repo
 import torch
 from beat_this.preprocessing import load_audio
 from beat_this.utils import filename_to_augmentation
@@ -184,6 +183,7 @@ class AudioPreprocessing(object):
             orig_audio_paths, header=None).values}
         # check if annotations exists, otherwise clone them from the repo
         if not self.annotation_dir.exists():
+            from git import Repo
             Repo.clone_from(
                 "https://github.com/fosfrancesco/beat_annotations.git", self.annotation_dir)
             assert self.annotation_dir.exists(
