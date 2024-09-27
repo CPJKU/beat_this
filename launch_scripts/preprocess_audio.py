@@ -352,7 +352,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--orig_audio_paths", type=str,
-                        help="path to the file with the original audio paths for each dataset", default='data/audio_paths.csv')
+                        help="path to the file with the original audio paths for each dataset (default: %(default)s)", default='data/audio_paths.csv')
     parser.add_argument(
         "--pitch_shift", metavar="LOW:HIGH",
         type=str, default="-5:6", help="pitch shift in semitones (default: %(default)s)")
