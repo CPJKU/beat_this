@@ -2,6 +2,7 @@
 import argparse
 import os
 from pathlib import Path
+from zipfile import ZipFile
 import concurrent.futures
 
 from tqdm import tqdm
@@ -329,6 +330,19 @@ def augment_audio_file(folder_path, waveform, aug_type, amount, aug_sr, out_sr, 
             resample_from=aug_sr)
 
 
+def create_npz(spect_dir, npz_file, augmentations, verbose):
+    """Assemble spectrograms from a directory into an .npz file."""
+    if npz_file.exists():
+        if verbose:
+            print(f"{npz_file} already exists, skipping")
+        return
+    with ZipFile(npz_file, 'w') as z:
+        for subdir in tqdm(sorted(spect_dir.iterdir()), leave=False):
+            if subdir.is_dir():
+                for fn in precomputed_augmentation_filenames(augmentations):
+                    z.write(subdir / fn, subdir.name + '/' + fn)
+
+
 def ints(value):
     """Parse a string containing a colon-separated tuple of integers."""
     return value and tuple(map(int, value.split(':')))
@@ -346,6 +360,14 @@ def main(orig_audio_paths, pitch_shift, time_stretch, verbose):
     sc = SpectCreation(pitch_shift=pitch_shift, time_stretch=time_stretch,
                        audio_sr=22050, mel_args=mel_args, verbose=verbose)
     sc.create_spects()
+
+    # assemble into NPZ files
+    print("Creating .npz spectrogram bundles...")
+    spect_dirs = [child for child in sc.spectrograms_dir.iterdir() if child.is_dir()]
+    for spect_dir in tqdm(spect_dirs):
+        create_npz(spect_dir, spect_dir.with_suffix('.npz'),
+                   {} if spect_dir.name == 'gtzan' else sc.augmentations,
+                   verbose)
 
 
 if __name__ == '__main__':
