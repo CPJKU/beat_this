@@ -50,7 +50,7 @@ def load_spect_bundle(file_path):
     with ZipFile(file_path) as zf:
         for name, zinfo in zf.NameToInfo.items():
             if name.endswith('.npy') and zinfo.compress_type == 0:
-                npy_start = zinfo.header_offset + len(zinfo.FileHeader())
+                npy_start = zinfo.header_offset + len(zinfo.FileHeader()) - len(zinfo.extra)
                 npy_end = npy_start + zinfo.file_size
                 zf.fp.seek(npy_start)
                 version = np.lib.format.read_magic(zf.fp)
