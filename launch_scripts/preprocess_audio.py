@@ -13,6 +13,7 @@ from pedalboard import time_stretch, Pedalboard, PitchShift
 import concurrent.futures
 from git import Repo
 import torch
+from beat_this.preprocessing import load_audio
 from beat_this.utils import filename_to_augmentation
 from beat_this.dataset.augment import precomputed_augmentation_filenames
 
