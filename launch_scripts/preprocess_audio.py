@@ -182,15 +182,12 @@ class AudioPreprocessing(object):
         # load data_dir from audio_path.csv which has the format: dataset_name, audio_path
         self.audio_dirs = {row[0]: row[1] for row in pd.read_csv(
             orig_audio_paths, header=None).values}
-        # check if annotations exists, otherwise clone them from the repo
+        # check if annotations exists, otherwise tell how to obtain them
         if not self.annotation_dir.exists():
-            from git import Repo
-            Repo.clone_from(
-                "https://github.com/fosfrancesco/beat_annotations.git", self.annotation_dir)
-            assert self.annotation_dir.exists(
-            ), "Annotations not found, something wrong during cloning"
+            raise RuntimeError(f"{self.annotation_dir} missing, check instructions "
+                               "in README.md how to obtain the annotations.")
 
-        print("Annotations ready in data/beat_annotations")
+        print(f"Annotations ready in {self.annotation_dir}")
 
         self.out_sr = out_sr
         self.aug_sr = aug_sr
