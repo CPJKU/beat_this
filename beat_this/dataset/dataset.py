@@ -141,6 +141,9 @@ class BeatTrackingDataset(Dataset):
             # load spectrogram
             spect = load_spect(item["spect_path"], start=start_frame, stop=end_frame)
 
+            # create modifiable copy (for PyTorch, and for mask augmentations)
+            spect = np.require(spect, requirements='WE')
+
             # augment the spectrogram with mask augmentation (if required)
             spect = augment_mask(spect, self.augmentations, self.fps)
 
