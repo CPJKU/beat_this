@@ -1,5 +1,6 @@
 from pathlib import Path
 from itertools import chain
+from zipfile import ZipFile
 
 import numpy as np
 
@@ -38,6 +39,26 @@ def load_spect(file_path, start=None, stop=None):
     if start is not None or stop is not None:
         data = data[start:stop]
     return data
+
+
+def load_spect_bundle(file_path):
+    """
+    Load an uncompressed .npz file as memory-mapped arrays.
+    """
+    items = {}
+    data = np.memmap(file_path, mode='r')
+    with ZipFile(file_path) as zf:
+        for name, zinfo in zf.NameToInfo.items():
+            if name.endswith('.npy') and zinfo.compress_type == 0:
+                npy_start = zinfo.header_offset + len(zinfo.FileHeader())
+                npy_end = npy_start + zinfo.file_size
+                zf.fp.seek(npy_start)
+                version = np.lib.format.read_magic(zf.fp)
+                np.lib.format._check_version(version)
+                shape, fortran, dtype = np.lib.format._read_array_header(zf.fp, version)
+                data_start = zf.fp.tell()
+                items[name] = data[data_start:npy_end].view(dtype=dtype).reshape(shape, order='F' if fortran else 'C')
+    return items
 
 
 def save_beat_tsv(beats: np.ndarray, downbeats: np.ndarray, outpath: str) -> None:

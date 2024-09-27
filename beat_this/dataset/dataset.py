@@ -9,7 +9,7 @@ import numpy as np
 
 from beat_this.utils import index_to_framewise
 from beat_this.dataset.augment import precomputed_augmentation_filenames, augment_pitchtempo, augment_mask
-from beat_this.utils import load_spect
+from beat_this.utils import load_spect, load_spect_bundle
 
 
 DATASET_INFO = {
@@ -58,18 +58,30 @@ class BeatTrackingDataset(Dataset):
         self.train_length = train_length
         self.deterministic = deterministic
         self.augmentations = augmentations
+        # load .npz spectrogram bundles, if any
+        self.spects = self._load_spect_bundles(metadata_df.dataset.unique())
         # load the annotations in parallel
         with concurrent.futures.ThreadPoolExecutor() as executor:
             items = executor.map(self._load_dataset_item,
                                  (row for _, row in metadata_df.iterrows()))
         self.items = [item for item in items if item is not None]
 
+    def _load_spect_bundles(self, datasets):
+        spects = {}
+        for dataset in datasets:
+            npz_file = (self.spect_basepath / dataset).with_suffix('.npz')
+            if npz_file.exists():
+                for name, spect in load_spect_bundle(npz_file).items():
+                    spects[dataset + '/' + name] = spect
+        return spects
+
     def _load_dataset_item(self, df_row):
         # stop if the audio is not there
-        spect_folder = self.spect_basepath / df_row["spect_folder"]
+        spect_folder = df_row["spect_folder"]
         # check if all the necessary files are there
         for aug_filename in precomputed_augmentation_filenames(self.augmentations):
-            if not (spect_folder / aug_filename).exists():
+            if ((f"{spect_folder}/{aug_filename}") not in self.spects and
+                not (self.spect_basepath / spect_folder / aug_filename).exists()):
                 print(f"Skipping {spect_folder} because not all necessary spectrograms are there.")
                 return
 
@@ -139,7 +151,10 @@ class BeatTrackingDataset(Dataset):
                 end_frame = original_length
 
             # load spectrogram
-            spect = load_spect(item["spect_path"], start=start_frame, stop=end_frame)
+            try:
+                spect = self.spects[str(item["spect_path"])][start_frame:end_frame]
+            except KeyError:
+                spect = load_spect(self.spect_basepath / item["spect_path"], start=start_frame, stop=end_frame)
 
             # create modifiable copy (for PyTorch, and for mask augmentations)
             spect = np.require(spect, requirements='WE')
