@@ -2,17 +2,17 @@
 import argparse
 import os
 from pathlib import Path
+import concurrent.futures
+
 from tqdm import tqdm
-from pathlib import Path
 import soxr
 import numpy as np
 import pandas as pd
-import madmom
 from pedalboard import time_stretch, Pedalboard, PitchShift
-import concurrent.futures
 import torch
 import torchaudio
-from beat_this.preprocessing import load_audio
+
+from beat_this.preprocessing import load_audio, LogMelSpect
 from beat_this.utils import filename_to_augmentation
 from beat_this.dataset.augment import precomputed_augmentation_filenames
 
