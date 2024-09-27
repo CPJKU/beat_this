@@ -4,7 +4,6 @@ import os
 from pathlib import Path
 from tqdm import tqdm
 from pathlib import Path
-import soundfile as sf
 import soxr
 import numpy as np
 import pandas as pd
@@ -12,6 +11,7 @@ import madmom
 from pedalboard import time_stretch, Pedalboard, PitchShift
 import concurrent.futures
 import torch
+import torchaudio
 from beat_this.preprocessing import load_audio
 from beat_this.utils import filename_to_augmentation
 from beat_this.dataset.augment import precomputed_augmentation_filenames
@@ -27,8 +27,9 @@ def save_audio(path, waveform, samplerate, resample_from=None):
                                  in_rate=resample_from,
                                  out_rate=samplerate)
     try:
-        waveform = np.asarray(waveform, dtype=np.float64)
-        sf.write(path, waveform, samplerate=samplerate)
+        waveform = torch.as_tensor(np.asarray(waveform, dtype=np.float64))
+        torchaudio.write(path, torch.atleast_1d(waveform), samplerate,
+                         bits_per_sample=16)
     except KeyboardInterrupt:
         path.unlink()  # avoid half-written files
         raise
