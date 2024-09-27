@@ -330,20 +330,22 @@ def augment_audio_file(folder_path, waveform, aug_type, amount, aug_sr, out_sr, 
             resample_from=aug_sr)
 
 
+def ints(value):
+    """Parse a string containing a colon-separated tuple of integers."""
+    return value and tuple(map(int, value.split(':')))
+
+
 def main(orig_audio_paths, pitch_shift, time_stretch, verbose):
     # preprocess audio
     dp = AudioPreprocessing(orig_audio_paths=orig_audio_paths, out_sr=22050, aug_sr=44100,
-                            pitch_shift=pitch_shift and tuple(
-                                map(int, pitch_shift.split(':'))),
-                            time_stretch=time_stretch and tuple(map(int, time_stretch.split(':'))), verbose=verbose)
+                            pitch_shift=pitch_shift, time_stretch=time_stretch, verbose=verbose)
     dp.preprocess_audio()
 
     # compute spectrograms
     mel_args = dict(n_fft=1024, hop_length=441, f_min=30, f_max=11000,
                     n_mels=128, mel_scale='slaney', normalized='frame_length', power=1)
-    sc = SpectCreation(pitch_shift=pitch_shift and tuple(map(int, pitch_shift.split(':'))),
-                        time_stretch=time_stretch and tuple(map(int, time_stretch.split(':'))), 
-                            audio_sr=22050, mel_args=mel_args, verbose=verbose)
+    sc = SpectCreation(pitch_shift=pitch_shift, time_stretch=time_stretch,
+                       audio_sr=22050, mel_args=mel_args, verbose=verbose)
     sc.create_spects()
 
 
@@ -361,4 +363,4 @@ if __name__ == '__main__':
                         help="verbose output")
     args = parser.parse_args()
 
-    main(args.orig_audio_paths, args.pitch_shift, args.time_stretch, args.verbose)
+    main(args.orig_audio_paths, ints(args.pitch_shift), ints(args.time_stretch), args.verbose)
