@@ -302,21 +302,23 @@ class BeatDataModule(pl.LightningDataModule):
         print("Creating datasets...")
         shared_kwargs = dict(data_folder=self.data_dir,
                             spect_fps=self.spect_fps,)
-        self.train_dataset = BeatTrackingDataset(self.metadata_df.iloc[train_idx].copy(),
-                                                 deterministic=False,
-                                                 augmentations=self.augmentations,
-                                                 train_length=self.train_length,
-                                                 **shared_kwargs)
-        self.val_dataset = BeatTrackingDataset(self.metadata_df.iloc[val_idx].copy(),
-                                                deterministic=True,
-                                                augmentations={},
-                                                train_length=self.train_length,
-                                                **shared_kwargs)
-        self.test_dataset = BeatTrackingDataset(self.metadata_df.iloc[test_idx].copy(),
-                                                deterministic=True,
-                                                augmentations={},
-                                                train_length=None,
-                                                **shared_kwargs)
+        if stage is None or stage == "fit":
+            self.train_dataset = BeatTrackingDataset(self.metadata_df.iloc[train_idx].copy(),
+                                                    deterministic=False,
+                                                    augmentations=self.augmentations,
+                                                    train_length=self.train_length,
+                                                    **shared_kwargs)
+            self.val_dataset = BeatTrackingDataset(self.metadata_df.iloc[val_idx].copy(),
+                                                    deterministic=True,
+                                                    augmentations={},
+                                                    train_length=self.train_length,
+                                                    **shared_kwargs)
+        if stage is None or stage == "test" or self.predict_datasplit == "test":
+            self.test_dataset = BeatTrackingDataset(self.metadata_df.iloc[test_idx].copy(),
+                                                    deterministic=True,
+                                                    augmentations={},
+                                                    train_length=None,
+                                                    **shared_kwargs)
         if self.predict_datasplit == "test":
             self.predict_dataset = self.test_dataset
         else:
@@ -326,7 +328,9 @@ class BeatDataModule(pl.LightningDataModule):
                                                 augmentations={},
                                                 train_length=None,
                                                 **shared_kwargs)
-        print(f"Train size: {len(self.train_dataset)}, Val size: {len(self.val_dataset)}, Test size: {len(self.test_dataset)}")
+        for part in 'train', 'val', 'test':
+            if hasattr(self, part + '_dataset'):
+                print(f"{part} size:", len(getattr(self, part + '_dataset')))
         self.initialized = True
 
     def train_dataloader(self):
