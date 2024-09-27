@@ -235,7 +235,7 @@ class AudioPreprocessing(object):
         # derive the name of the unaugmented file
         mono_path = folder_path / f'track_ps0.{self.ext}'
         # derive the name of all augmented files
-        augmentations = {"pitch": {"min": self.pitch_shift[0], "max": self.pitch_shift[1]}, "tempo": { "min": -self.time_stretch[0], "max": self.time_stretch[0]+1, "stride": self.time_stretch[1]}}
+        augmentations = {"pitch": {"min": self.pitch_shift[0], "max": self.pitch_shift[1]}, "tempo": { "min": -self.time_stretch[0], "max": self.time_stretch[0], "stride": self.time_stretch[1]}}
         augmentations_path = precomputed_augmentation_filenames(augmentations, self.ext)
         # stop here if all files exists
         if mono_path.exists() and all((folder_path / aug).exists() for aug in augmentations_path):
