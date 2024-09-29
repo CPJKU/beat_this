@@ -29,8 +29,12 @@ def save_audio(path, waveform, samplerate, resample_from=None):
                                  out_rate=samplerate)
     try:
         waveform = torch.as_tensor(np.asarray(waveform, dtype=np.float64))
-        torchaudio.write(path, torch.atleast_1d(waveform), samplerate,
-                         bits_per_sample=16)
+
+        if waveform.ndim == 1:
+            waveform = waveform.unsqueeze(0)
+
+        torchaudio.save(path, torch.atleast_1d(waveform), samplerate,
+                        bits_per_sample=16)
     except KeyboardInterrupt:
         path.unlink()  # avoid half-written files
         raise
@@ -151,7 +155,7 @@ class SpectCreation():
                 # save the spectrogram as numpy array
                 spect_path.parent.mkdir(parents=True, exist_ok=True)
                 save_spectrogram(spect_path, spect.numpy())
-                
+
             # save the length of the spectrogram
             spect_lens[filename_to_augmentation(audio_path.stem)["stretch"]] = spect.shape[0]
         # save the metadata. Each tempo augmentation get a dedicated column
@@ -269,8 +273,8 @@ class AudioPreprocessing(object):
         if (self.pitch_shift or self.time_stretch) and (sr != self.aug_sr):
             waveform = soxr.resample(
                 waveform, in_rate=sr, out_rate=self.aug_sr)
-            
-        # handle the requested augmentations          
+
+        # handle the requested augmentations
         # pedalboard requires float32, convert
         waveform = np.asarray(waveform, dtype=np.float32)
         shifts = range(
@@ -285,7 +289,7 @@ class AudioPreprocessing(object):
 
         return
 
-    
+
 def augment_audio_file(folder_path, waveform, aug_type, amount, aug_sr, out_sr, ext, verbose):
     # figure out the file name
     if aug_type == "stretch":
