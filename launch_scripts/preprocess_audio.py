@@ -63,7 +63,7 @@ class SpectCreation():
         self.preprocessed_dir = BASEPATH / 'data' / 'preprocessed'
         self.mono_tracks_dir = self.preprocessed_dir / 'mono_tracks'
         self.spectrograms_dir = self.preprocessed_dir / 'spectrograms'
-        self.annotations_dir = BASEPATH / 'data' / 'beat_annotations'
+        self.annotations_dir = BASEPATH / 'data' / 'annotations'
 
         if verbose:
             print("Preprocessed dir: ", self.preprocessed_dir.absolute())
@@ -179,7 +179,7 @@ class AudioPreprocessing(object):
         """
         super(AudioPreprocessing, self).__init__()
         self.preprocessed_dir = BASEPATH / 'data' / 'preprocessed'
-        self.annotation_dir = BASEPATH / 'data' / 'beat_annotations'
+        self.annotation_dir = BASEPATH / 'data' / 'annotations'
         # load data_dir from audio_path.csv which has the format: dataset_name, audio_path
         self.audio_dirs = {row[0]: row[1] for row in pd.read_csv(
             orig_audio_paths, header=None).values}

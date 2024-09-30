@@ -53,7 +53,7 @@ class BeatTrackingDataset(Dataset):
                  train_length=1500, deterministic=False,
                  augmentations={}):
         self.spect_basepath = data_folder / "preprocessed" / "spectrograms"
-        self.annotation_basepath = data_folder / "beat_annotations"
+        self.annotation_basepath = data_folder / "annotations"
         self.fps = spect_fps
         self.train_length = train_length
         self.deterministic = deterministic
@@ -219,7 +219,7 @@ class BeatDataModule(pl.LightningDataModule):
         self.spect_fps = spect_fps
         self.data_dir = data_dir
         # set up the paths
-        annotation_dir = data_dir / 'beat_annotations'
+        annotation_dir = data_dir / 'annotations'
         spect_dir = data_dir / 'preprocessed' / 'spectrograms'
         # load dataframe with all pieces information
         metadata_file = spect_dir / 'spectrograms_metadata.csv'
