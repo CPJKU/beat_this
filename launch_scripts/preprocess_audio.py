@@ -29,8 +29,8 @@ def save_audio(path, waveform, samplerate, resample_from=None):
                                  out_rate=samplerate)
     try:
         waveform = torch.as_tensor(np.asarray(waveform, dtype=np.float64))
-        torchaudio.write(path, torch.atleast_1d(waveform), samplerate,
-                         bits_per_sample=16)
+        torchaudio.save(path, torch.atleast_2d(waveform), samplerate,
+                        bits_per_sample=16)
     except KeyboardInterrupt:
         path.unlink()  # avoid half-written files
         raise
