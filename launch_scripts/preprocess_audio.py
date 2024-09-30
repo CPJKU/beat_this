@@ -203,6 +203,7 @@ class AudioPreprocessing(object):
 
     def preprocess_audio(self):
         print("Preprocessing audio files ...")
+        processed = 0
         with concurrent.futures.ThreadPoolExecutor() as executor:
             futures = []
             for dataset_name, audio_dir in self.audio_dirs.items():
@@ -212,16 +213,11 @@ class AudioPreprocessing(object):
                     futures.append(executor.submit(self.process_audio_file,
                                                    dataset_name,
                                                    audio_path))
-            metadata = [future.result()
-                        for future in tqdm(concurrent.futures.as_completed(futures),
-                                           total=len(futures))]
-        print("Done!")
-
-        # merge all metadata in a pandas dataframe
-        df = pd.DataFrame.from_dict(sorted([m for m in metadata if m is not None],
-                                           key=lambda x: x['processed_path']))
-        print("Processed", len(df), "audio files")
-        return df
+            for future in tqdm(concurrent.futures.as_completed(futures),
+                          total=len(futures)):
+                if future.result():
+                    processed += 1
+        print("Processed", processed, "audio files")
 
     def process_audio_file(self, dataset_name, audio_path):
         annotation_dir = Path(self.annotation_dir, dataset_name, 'annotations')
@@ -229,7 +225,7 @@ class AudioPreprocessing(object):
         beat_path = Path(annotation_dir, "beats", audio_path.stem+'.beats')
         if not beat_path.exists():
             print(f"beat annotation {beat_path} not found for {audio_path}", )
-            return
+            return False
         # create a folder with the name of the track
         folder_path = Path(self.preprocessed_dir, "mono_tracks",
                            dataset_name, audio_path.stem)
@@ -242,7 +238,7 @@ class AudioPreprocessing(object):
         if mono_path.exists() and all((folder_path / aug).exists() for aug in augmentations_path):
             if self.verbose:
                 print(f"All files in {folder_path} exists, skipping")
-            return
+            return True
 
         # load audio
         try:
@@ -283,8 +279,7 @@ class AudioPreprocessing(object):
             augment_audio_file(
                 folder_path, waveform, aug_type = "stretch", amount = stretch, aug_sr = self.aug_sr, out_sr = self.out_sr, ext = self.ext, verbose=self.verbose)
 
-        return
-
+        return True
     
 def augment_audio_file(folder_path, waveform, aug_type, amount, aug_sr, out_sr, ext, verbose):
     # figure out the file name
