@@ -42,7 +42,7 @@ def augment_pitchtempo(item, augmentations):
     else:
         # set spect_length to the original value and spect_path to the original file
         item["spect_length"] = item["spect_lengths"][0]
-        item["spect_path"] = Path(item["spect_folder"]) / "track_ps0.npy"
+        item["spect_path"] = Path(item["spect_folder"]) / "track.npy"
 
     return item
 
@@ -86,16 +86,19 @@ def shift_annotations(item, semitones):
 
 def stretch_filename(item, percentage):
     """Derive filename of precomputed time stretched version."""
-    filestem = "track_ps0"
+    filestem = "track"
     if percentage:
-        filestem = filestem + f"_ts{percentage}"
+        filestem = f"{filestem}_ts{percentage}"
     spect_path = Path(item["spect_folder"]) / f"{filestem}.npy"
     return {**item, "spect_path": spect_path}
 
 
 def shift_filename(item, semitones):
     """Derive filename of precomputed pitch shifted version."""
-    spect_path = Path(item["spect_folder"]) / f"track_ps{semitones}.npy"
+    filestem = "track"
+    if semitones:
+        filestem = f"{filestem}_ps{semitones}"
+    spect_path = Path(item["spect_folder"]) / f"{filestem}.npy"
     return {**item, "spect_path": spect_path}
 
 
@@ -119,7 +122,7 @@ def precomputed_augmentation_filenames(augmentations, ext="npy"):
         - 'pitch': A dictionary with 'min' and 'max' keys specifying the range (including boundaries) of pitch shifting in semitones.
         - 'tempo': A dictionary with 'min' and 'max' keys specifying the range (including boundaries) of time stretching factors; and a 'stride' key specifying the step size.
     """
-    filenames = [f"track_ps0.{ext}"]
+    filenames = [f"track.{ext}"]
     for method, params in augmentations.items():
         if method == "pitch":
             for semitones in range(params["min"], params["max"] + 1):
@@ -130,7 +133,7 @@ def precomputed_augmentation_filenames(augmentations, ext="npy"):
             for percentage in range(params["min"], params["max"] + 1, params["stride"]):
                 if percentage == 0:
                     continue
-                filenames.append(f"track_ps0_ts{percentage}.{ext}")
+                filenames.append(f"track_ts{percentage}.{ext}")
     return filenames
 
 

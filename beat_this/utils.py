@@ -14,18 +14,14 @@ def index_to_framewise(index, length):
 
 def filename_to_augmentation(filename):
     """Convert a filename to an augmentation factor."""
-    stem = Path(filename).stem
-    if len(stem.split("_")) == 2:  # only pitch shift, e.g. track_ps-1
-        return {"pitch": int(stem.split("_")[1].replace("ps", "")), "stretch": 0}
-    elif (
-        len(stem.split("_")) == 3
-    ):  # pitch shift and time stretch, e.g. track_ps-1_ts12
-        return {
-            "pitch": int(stem.split("_")[1].replace("ps", "")),
-            "stretch": int(stem.split("_")[2].replace("ts", "")),
-        }
-    else:
-        raise ValueError(f"Unsupported filename: {filename}")
+    parts = Path(filename).stem.split("_")
+    augmentations = {}
+    for part in parts[1:]:
+        if part.startswith("ps"):
+            augmentations["shift"] = int(part[2:])
+        elif part.startswith("ts"):
+            augmentations["stretch"] = int(part[2:])
+    return augmentations
 
 
 def load_spect(file_path, start=None, stop=None):

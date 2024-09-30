@@ -153,7 +153,7 @@ class SpectCreation():
                 save_spectrogram(spect_path, spect.numpy())
                 
             # save the length of the spectrogram
-            spect_lens[filename_to_augmentation(audio_path.stem)["stretch"]] = spect.shape[0]
+            spect_lens[filename_to_augmentation(audio_path.stem).get("stretch", 0)] = spect.shape[0]
         # save the metadata. Each tempo augmentation get a dedicated column
         metadata.append({"spect_folder": spect_path.parent.relative_to(self.spectrograms_dir),
                          "beat_path": beat_path,
@@ -230,7 +230,7 @@ class AudioPreprocessing(object):
         folder_path = Path(self.audio_dir, "mono_tracks",
                            dataset_name, audio_path.stem)
         # derive the name of the unaugmented file
-        mono_path = folder_path / f'track_ps0.{self.ext}'
+        mono_path = folder_path / f'track.{self.ext}'
         # derive the name of all augmented files
         augmentations = {"pitch": {"min": self.pitch_shift[0], "max": self.pitch_shift[1]}, "tempo": { "min": -self.time_stretch[0], "max": self.time_stretch[0], "stride": self.time_stretch[1]}}
         augmentations_path = precomputed_augmentation_filenames(augmentations, self.ext)
@@ -291,7 +291,9 @@ def augment_audio_file(folder_path, waveform, aug_type, amount, aug_sr, out_sr, 
         stretch = 0
     else:
         raise ValueError(f"Unknown augmentation mode {aug_type}")
-    suffix = f"_ps{shift}"
+    suffix = ""
+    if shift != 0:
+        suffix = suffix + f"_ps{shift}"
     if stretch != 0:
         suffix = suffix + f"_ts{stretch}"
     out_path = Path(folder_path, f'track{suffix}.{ext}')
