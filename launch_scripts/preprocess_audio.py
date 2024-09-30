@@ -86,6 +86,7 @@ class SpectCreation():
 
     def create_spects(self):
         print("Creating spectrograms ...")
+        processed = 0
         with concurrent.futures.ThreadPoolExecutor() as executor:
             futures = []
             for dataset_dir in self.mono_tracks_dir.iterdir():
@@ -94,15 +95,11 @@ class SpectCreation():
                                                     piece_dir,
                                                     Path(dataset_dir.name) / 'annotations' / 'beats' / f'{piece_dir.name}.beats',
                                                     dataset_dir.name))
-            metadata = [future.result()
-                        for future in tqdm(concurrent.futures.as_completed(futures),
-                                           total=len(futures))]
-
-        # save metadata
-        df = pd.DataFrame.from_dict([m[0] for m in metadata if m is not None]).sort_values(by="spect_folder")
-        df.to_csv(self.spectrograms_dir /
-                  'spectrograms_metadata.csv', index=False)
-        print(f"Created {len(df)} spectrograms in {self.spectrograms_dir}")
+            for future in tqdm(concurrent.futures.as_completed(futures),
+                          total=len(futures)):
+                if future.result():
+                    processed += 1
+        print(f"Created {processed} spectrograms in {self.spectrograms_dir}")
 
     def create_spect_piece(self, preprocessed_audio_folder, beat_path, dataset_name):
         """
@@ -120,8 +117,6 @@ class SpectCreation():
         Returns:
             metadata (list): A list containing the metadata of the created spectrogram.
         """
-        metadata = []
-        spect_lens = {} # store the length of the spectrograms for each tempo augmentation. The key is the stretch.
         for filename in self.filenames:
             if not (self.annotations_dir / beat_path).exists():
                 print(f"beat annotation {beat_path} not found for {preprocessed_audio_folder}")
@@ -129,20 +124,11 @@ class SpectCreation():
             audio_path = preprocessed_audio_folder / filename
             spect_path = self.spectrograms_dir / dataset_name/ preprocessed_audio_folder.name / f'{Path(filename).stem}.npy'
             if spect_path.exists():
-                # load the spectrogram to get the length
-                try:
-                    spect = np.load(spect_path, mmap_mode='r')
-                    compute_spect = False
-                except:
-                    compute_spect = True
-            else:
-                compute_spect = True
-            if self.verbose:
-                if compute_spect:
-                    print(f"Computing {spect_path}")
-                else:
+                if self.verbose:
                     print(f"Skipping {spect_path} because it exists")
-            if compute_spect:
+            else:
+                if self.verbose:
+                    print(f"Computing {spect_path}")
                 waveform, sr = load_audio(audio_path)
                 assert sr == self.audio_sr, f"Sample rate mismatch: {sr} != {self.audio_sr}"
                 # compute the mel spectrogram and scale the values with log(1 + 1000 * x)
@@ -151,15 +137,7 @@ class SpectCreation():
                 # save the spectrogram as numpy array
                 spect_path.parent.mkdir(parents=True, exist_ok=True)
                 save_spectrogram(spect_path, spect.numpy())
-                
-            # save the length of the spectrogram
-            spect_lens[filename_to_augmentation(audio_path.stem).get("stretch", 0)] = spect.shape[0]
-        # save the metadata. Each tempo augmentation get a dedicated column
-        metadata.append({"spect_folder": spect_path.parent.relative_to(self.spectrograms_dir),
-                         "beat_path": beat_path,
-                         "dataset": dataset_name,
-                            **{f"spect_len_ts{ts}": spect_lens.get(ts, 0) for ts in sorted(spect_lens.keys())}})
-        return metadata
+        return True
 
 
 class AudioPreprocessing(object):
