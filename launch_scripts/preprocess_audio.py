@@ -60,13 +60,13 @@ class SpectCreation():
         """
         super(SpectCreation, self).__init__()
         # define the directories
-        self.preprocessed_dir = BASEPATH / 'data' / 'preprocessed'
-        self.mono_tracks_dir = self.preprocessed_dir / 'mono_tracks'
-        self.spectrograms_dir = self.preprocessed_dir / 'spectrograms'
+        self.audio_dir = BASEPATH / 'data' / 'audio'
+        self.mono_tracks_dir = self.audio_dir / 'mono_tracks'
+        self.spectrograms_dir = self.audio_dir / 'spectrograms'
         self.annotations_dir = BASEPATH / 'data' / 'annotations'
 
         if verbose:
-            print("Preprocessed dir: ", self.preprocessed_dir.absolute())
+            print("Audio dir: ", self.audio_dir.absolute())
             print("Mono tracks dir: ", self.mono_tracks_dir.absolute())
             print("Spectrograms dir: ", self.spectrograms_dir.absolute())
             print("Annotations dir: ", self.annotations_dir.absolute())
@@ -178,7 +178,7 @@ class AudioPreprocessing(object):
             verbose (bool, optional): Whether to print verbose information. Defaults to False.
         """
         super(AudioPreprocessing, self).__init__()
-        self.preprocessed_dir = BASEPATH / 'data' / 'preprocessed'
+        self.audio_dir = BASEPATH / 'data' / 'audio'
         self.annotation_dir = BASEPATH / 'data' / 'annotations'
         # load data_dir from audio_path.csv which has the format: dataset_name, audio_path
         self.audio_dirs = {row[0]: row[1] for row in pd.read_csv(
@@ -227,7 +227,7 @@ class AudioPreprocessing(object):
             print(f"beat annotation {beat_path} not found for {audio_path}", )
             return False
         # create a folder with the name of the track
-        folder_path = Path(self.preprocessed_dir, "mono_tracks",
+        folder_path = Path(self.audio_dir, "mono_tracks",
                            dataset_name, audio_path.stem)
         # derive the name of the unaugmented file
         mono_path = folder_path / f'track_ps0.{self.ext}'
