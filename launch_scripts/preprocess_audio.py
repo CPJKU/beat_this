@@ -32,7 +32,7 @@ def save_audio(path, waveform, samplerate, resample_from=None):
 
         if waveform.ndim == 1:
             waveform = waveform.unsqueeze(0)
-
+            
         torchaudio.save(path, torch.atleast_1d(waveform), samplerate,
                         bits_per_sample=16)
     except KeyboardInterrupt:
@@ -246,7 +246,7 @@ class AudioPreprocessing(object):
         if mono_path.exists() and all((folder_path / aug).exists() for aug in augmentations_path):
             if self.verbose:
                 print(f"All files in {folder_path} exists, skipping")
-            return
+            return {"audio_path": str(audio_path), "processed_path": str(mono_path)}
 
         # load audio
         try:
@@ -287,7 +287,7 @@ class AudioPreprocessing(object):
             augment_audio_file(
                 folder_path, waveform, aug_type = "stretch", amount = stretch, aug_sr = self.aug_sr, out_sr = self.out_sr, ext = self.ext, verbose=self.verbose)
 
-        return
+        return {"audio_path": str(audio_path), "processed_path": str(mono_path)}
 
 
 def augment_audio_file(folder_path, waveform, aug_type, amount, aug_sr, out_sr, ext, verbose):
