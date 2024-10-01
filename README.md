@@ -69,7 +69,7 @@ beats, downbeats = file2beats(audio_path)
 Optionally, you can produce a `.beats` file (e.g., for importing into [Sonic Visualizer](https://www.sonicvisualiser.org/)):
 ```python
 from beat_this.utils import save_beat_tsv
-output_path = "path/to/output.beats"
+outpath = "path/to/output.beats"
 save_beat_tsv(beats, downbeats, outpath)
 ```
 If you already have an audio tensor loaded, instead of `File2Beats`, use `Audio2Beats` and pass the tensor and its sample rate. We also provide `Audio2Frames` for framewise logits and `Spect2Frames` for spectrogram inputs.
