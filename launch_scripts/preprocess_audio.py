@@ -36,9 +36,9 @@ def save_audio(path, waveform, samplerate, resample_from=None):
         raise
 
 
-def save_spectrogram(path, spectrogram):
+def save_spectrogram(path, spectrogram, dtype=np.float16):
     try:
-        np.save(path, spectrogram)
+        np.save(path, np.asarray(spectrogram, dtype=dtype))
     except KeyboardInterrupt:
         path.unlink()  # avoid half-written files
         raise
