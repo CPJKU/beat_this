@@ -11,9 +11,8 @@ def augment_pitchtempo(item, augmentations):
     Parameters:
     item: dict
         A dictionary representing the item to be augmented. It should contain the following keys:
-        - 'spect_folder': The path to the folder containing the spectrogram file.
-        - 'spect_lengths': A list containing the length of the spectrograms corresponding to different time stretches.
-        If pitch or tempo augmentation is applied, the 'spect_length' and 'spect_path' keys will be updated.
+        - 'spect_path': The path to the the unaugmented spectrogram file.
+        If pitch or tempo augmentation is applied, the 'spect_path' key will be updated.
 
     augmentations: dict
         A dictionary containing the augmentations to be applied. It can contain either or both of the following keys:
@@ -22,9 +21,8 @@ def augment_pitchtempo(item, augmentations):
 
     Returns:
     item: dict
-        The item after applying the augmentation. If a pitch or tempo augmentation was applied, the 'spect_length'
-        and 'spect_path' keys will be updated. If no augmentation was applied, 'spect_length' will be set to the
-        original length and 'spect_path' will be set to the original file.
+        The item after applying the augmentation. If a pitch or tempo augmentation was applied, the 'spect_path' key
+        and the annotations will be updated.
     """
     # Handle pitch and tempo augmentations
     if "pitch" in augmentations and "tempo" in augmentations:
@@ -39,10 +37,6 @@ def augment_pitchtempo(item, augmentations):
         item = augment_pitch(item, augmentations["pitch"])
     elif "tempo" in augmentations:
         item = augment_tempo(item, augmentations["tempo"])
-    else:
-        # set spect_length to the original value and spect_path to the original file
-        item["spect_length"] = item["spect_lengths"][0]
-        item["spect_path"] = Path(item["spect_folder"]) / "track.npy"
 
     return item
 
@@ -52,7 +46,6 @@ def augment_pitch(item, pitch_params):
     semitones = np.random.randint(pitch_params["min"], pitch_params["max"] + 1)
     item = shift_filename(item, semitones)
     item = shift_annotations(item, semitones)
-    item["spect_length"] = item["spect_lengths"][0]
     return item
 
 
@@ -63,8 +56,6 @@ def augment_tempo(item, tempo_params):
     )
     item = stretch_filename(item, percentage)
     item = stretch_annotations(item, percentage)
-    # select the spect length from the precomputed values
-    item["spect_length"] = item["spect_lengths"][percentage]
     return item
 
 
@@ -86,19 +77,19 @@ def shift_annotations(item, semitones):
 
 def stretch_filename(item, percentage):
     """Derive filename of precomputed time stretched version."""
-    filestem = "track"
+    spect_path = item["spect_path"]
     if percentage:
-        filestem = f"{filestem}_ts{percentage}"
-    spect_path = Path(item["spect_folder"]) / f"{filestem}.npy"
+        stem = spect_path.stem + f"_ts{percentage}"
+        spect_path = spect_path.with_stem(stem)
     return {**item, "spect_path": spect_path}
 
 
 def shift_filename(item, semitones):
     """Derive filename of precomputed pitch shifted version."""
-    filestem = "track"
+    spect_path = item["spect_path"]
     if semitones:
-        filestem = f"{filestem}_ps{semitones}"
-    spect_path = Path(item["spect_folder"]) / f"{filestem}.npy"
+        stem = spect_path.stem + f"_ps{semitones}"
+        spect_path = spect_path.with_stem(stem)
     return {**item, "spect_path": spect_path}
 
 

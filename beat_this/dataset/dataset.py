@@ -1,5 +1,8 @@
 from pathlib import Path
 import concurrent.futures
+import re
+import itertools
+import json
 
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -12,33 +15,13 @@ from beat_this.dataset.augment import precomputed_augmentation_filenames, augmen
 from beat_this.utils import load_spect, load_spect_bundle
 
 
-DATASET_INFO = {
-    "gtzan" : {"beat": True, "downbeat" : True},
-    "hainsworth" : {"beat": True, "downbeat" : True},
-    "ballroom" : {"beat": True, "downbeat" : True},
-    "hjdb" : {"beat": True, "downbeat" : True},
-    "beatles" : {"beat": True, "downbeat" : True},
-    "rwc" : {"beat": True, "downbeat" : True},
-    "harmonix" : {"beat": True, "downbeat": True},
-    "tapcorrect" : {"beat": True, "downbeat": True},
-    "jaah" : {"beat": True, "downbeat": True},
-    "filosax" : {"beat": True, "downbeat": True},
-    "asap" : {"beat": True, "downbeat": True},
-    "groove_midi" : {"beat": True, "downbeat": True},
-    "guitarset" : {"beat": True, "downbeat": True},
-    "candombe" : {"beat": True, "downbeat": True},
-    "simac" : {"beat": True, "downbeat" : False},
-    "smc" : {"beat": True, "downbeat" : False},
-}
-
 class BeatTrackingDataset(Dataset):
     """
     A PyTorch Dataset for beat tracking. This dataset loads preprocessed spectrograms and beat annotations
     from a given data folder and provides them for training or evaluation.
 
     Args:
-        metadata_df (pd.DataFrame): A DataFrame containing metadata about the dataset items.
-            Each row should represent one item and contain at least a 'spect_folder' column.
+        item_names (list of str): A list of dataset items such as "gtzan/gtzan_rock_00099".
         data_folder (Path or str): The base folder where the data is stored.
         spect_fps (int, optional): The frames per second of the spectrograms. Defaults to 50.
         train_length (int, optional): The length of the training sequences in frames. If None the entire piece is used. Defaults to 1500.
@@ -47,24 +30,48 @@ class BeatTrackingDataset(Dataset):
         augmentations (dict, optional): A dictionary of data augmentations to apply. Possible keys are "tempo", "pitch", and "mask". Defaults to an empty dictionary.
     """
 
-    def __init__(self, metadata_df: pd.DataFrame,
+    def __init__(self,
+                 item_names: list[str],
                  data_folder,
                  spect_fps=50,
                  train_length=1500, deterministic=False,
-                 augmentations={}):
+                 augmentations={},
+                 length_based_oversampling_factor=0):
         self.spect_basepath = data_folder / "audio" / "spectrograms"
         self.annotation_basepath = data_folder / "annotations"
         self.fps = spect_fps
         self.train_length = train_length
         self.deterministic = deterministic
         self.augmentations = augmentations
+        self.length_based_oversampling_factor = length_based_oversampling_factor
+        datasets = sorted(set(name.split('/', 1)[0] for name in item_names))
+        # load dataset info
+        self.dataset_info = self._load_dataset_infos(datasets)
         # load .npz spectrogram bundles, if any
-        self.spects = self._load_spect_bundles(metadata_df.dataset.unique())
+        self.spects = self._load_spect_bundles(datasets)
         # load the annotations in parallel
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            items = executor.map(self._load_dataset_item,
-                                 (row for _, row in metadata_df.iterrows()))
-        self.items = [item for item in items if item is not None]
+            items = executor.map(self._load_dataset_item, item_names)
+        items = [item for item in items if item is not None]
+        if self.length_based_oversampling_factor and self.train_length is not None:
+            # oversample the dataset according to the audio lengths, so that long pieces are sampled more often
+            oversampled_items = []
+            for item in items:
+                oversampling_factor = np.round(self.length_based_oversampling_factor *
+                                               len(self._get_spect(item)) /
+                                               self.train_length).astype(int)
+                oversampling_factor = max(oversampling_factor, 1)
+                oversampled_items.extend(itertools.repeat(item, oversampling_factor))
+            print(f"Training set oversampled from {len(items)} to {len(oversampled_items)} excerpts.")
+            items = oversampled_items
+        self.items = items
+
+    def _load_dataset_infos(self, datasets):
+        dataset_info = {}
+        for dataset in datasets:
+            with open(self.annotation_basepath / dataset / "info.json") as f:
+                dataset_info[dataset] = json.load(f)
+        return dataset_info
 
     def _load_spect_bundles(self, datasets):
         spects = {}
@@ -75,18 +82,17 @@ class BeatTrackingDataset(Dataset):
                     spects[dataset + '/' + name] = spect
         return spects
 
-    def _load_dataset_item(self, df_row):
-        # stop if the audio is not there
-        spect_folder = df_row["spect_folder"]
-        # check if all the necessary files are there
+    def _load_dataset_item(self, item_name):
+        # stop if not all the augmented audio files are there
         for aug_filename in precomputed_augmentation_filenames(self.augmentations):
-            if ((f"{spect_folder}/{aug_filename}") not in self.spects and
-                not (self.spect_basepath / spect_folder / aug_filename).exists()):
-                print(f"Skipping {spect_folder} because not all necessary spectrograms are there.")
+            if ((f"{item_name}/{aug_filename}") not in self.spects and
+                not (self.spect_basepath / item_name / aug_filename).exists()):
+                print(f"Skipping {item_name} because not all necessary spectrograms are there.")
                 return
 
         # load beat and produce a default if beat values are not found
-        annotation_path = self.annotation_basepath / df_row["beat_path"]
+        dataset, stem = item_name.split('/', 1)
+        annotation_path = self.annotation_basepath / dataset / "annotations" / "beats" / (stem + ".beats")
         beat_annotation = np.loadtxt(annotation_path)
         if beat_annotation.ndim == 2 :
             beat_time = beat_annotation[:, 0]
@@ -96,25 +102,33 @@ class BeatTrackingDataset(Dataset):
             beat_value = np.zeros_like(beat_time, dtype=np.int32)
 
         # stop if the annotations that are supposed to be there are not there
-        if DATASET_INFO[df_row["dataset"]]["downbeat"]:
+        if self.dataset_info[dataset]["has_downbeats"]:
             if beat_annotation.ndim != 2 :
-                print(f"Skipping {df_row['beat_path']} because it has {beat_annotation.ndim} columns but downbeat is supposed to be there.")
+                print(f"Skipping {item_name} because it has {beat_annotation.ndim} columns but downbeat is supposed to be there.")
                 return
 
         # create a downbeat mask to handle the case where the downbeat is not annotated
-        downbeat_mask = DATASET_INFO[df_row["dataset"]]["downbeat"]
-        # select all values in columns that start with spect_len, e.g. spect_len_ts-20
-        spect_lengths = {int(key.replace("spect_len_ts","")): int(value) for key, value in df_row.items() if key.startswith("spect_len")}
+        downbeat_mask = self.dataset_info[dataset]["has_downbeats"]
         # take care of different subsections of rwc for the dataset name
-        dataset_name = df_row["dataset"] if df_row["dataset"] != "rwc" else "rwc_" + spect_folder.name.split("_")[1]
-        return {'spect_folder': str(spect_folder),
+        if dataset == "rwc":
+            dataset = "rwc_" + stem.split("_", 2)[1]
+        return {'spect_path': Path(item_name) / "track.npy",
                 'beat_time': beat_time,
                 'beat_value': beat_value,
                 'downbeat_mask': downbeat_mask,
-                'dataset': dataset_name,
-                'spect_lengths': spect_lengths,
+                'dataset': dataset,
                 }
 
+    def _get_spect(self, item):
+        try:
+            spect = self.spects[str(item["spect_path"])]
+        except KeyError:
+            spect = load_spect(self.spect_basepath / item["spect_path"])
+        return spect
+
+    def get_frame_count(self, index):
+        """Return number of frames of given item."""
+        return len(self._get_spect(self.items[index]))
 
     def get_beat_count(self, index):
         """Return number of beats (including downbeats) of given item."""
@@ -133,8 +147,12 @@ class BeatTrackingDataset(Dataset):
 
             # select a pitch shift and time stretch
             item = augment_pitchtempo(item, self.augmentations)
+
+            # load spectrogram
+            spect = self._get_spect(item)
+
             # define the excerpt to use
-            original_length = item["spect_length"]
+            original_length = len(spect)
             if self.train_length is not None:
                 longer = original_length - self.train_length
             else:
@@ -150,11 +168,8 @@ class BeatTrackingDataset(Dataset):
                 start_frame = 0
                 end_frame = original_length
 
-            # load spectrogram
-            try:
-                spect = self.spects[str(item["spect_path"])][start_frame:end_frame]
-            except KeyError:
-                spect = load_spect(self.spect_basepath / item["spect_path"], start=start_frame, stop=end_frame)
+            # obtain a view of the excerpt
+            spect = spect[start_frame:end_frame]
 
             # create modifiable copy (for PyTorch, and for mask augmentations)
             spect = np.require(spect, requirements='WE')
@@ -215,141 +230,130 @@ class BeatDataModule(pl.LightningDataModule):
                  length_based_oversampling_factor=0, fold=None, predict_datasplit="test" ):
         super().__init__()
         self.save_hyperparameters()
-        self.initialized = False
-        self.spect_fps = spect_fps
-        self.data_dir = data_dir
-        # set up the paths
-        annotation_dir = data_dir / 'annotations'
-        spect_dir = data_dir / 'audio' / 'spectrograms'
-        # load dataframe with all pieces information
-        metadata_file = spect_dir / 'spectrograms_metadata.csv'
-        self.metadata_df = pd.read_csv(metadata_file)
-        # only keep datasets that are both in DATASET_INFO and in the metadata
-        usable_datasets = handle_datasets_mismatch(self.metadata_df)
-        self.usable_datasets = usable_datasets
-        self.metadata_df = self.metadata_df[self.metadata_df.dataset.isin(usable_datasets)].reset_index(drop=True)
-        # find and load train/val splits
-        if fold is not None:
-            # use cross-validation splits
-            self.trainval_splits = {}
-            for dataset in usable_datasets:
-                if dataset == test_dataset:
-                    continue
-                print(annotation_dir / dataset)
-                cv = pd.read_csv(annotation_dir / dataset / f"{dataset}_8-fold.folds", header=None, names=["piece", "fold"], sep="\t")
-                cv["split"] = cv["fold"].apply(lambda fold_idx: 'val' if fold_idx == fold else 'train')
-                self.trainval_splits[dataset] = cv
-            print("Cross-validation split loaded for datasets", self.trainval_splits.keys(), "fold", fold)
-        else:
-            # use single splits
-            self.trainval_splits = {}
-            for dataset in usable_datasets:
-                if dataset == test_dataset:
-                    continue
-                self.trainval_splits[dataset] = pd.read_csv(annotation_dir / dataset / 'split.csv')
-            print("Manual splits loaded:", self.trainval_splits.keys())
-        # remember remaining parameters
+        self.initialized = {}
+        self.dataset_info = {}
+        # remember all arguments
+        self.data_dir = Path(data_dir)
         self.batch_size = batch_size
         self.train_length = train_length
-        self.test_dataset = test_dataset
-        self.hung_data = hung_data
-        self.no_val = no_val
         self.num_workers = num_workers
-        self.augmentations = augmentations
-        self.length_based_oversampling_factor = length_based_oversampling_factor
-        # check if augmentations.keys() contains only 'mask', 'pitch' and 'time'
         if not set(augmentations.keys()).issubset({'mask', 'pitch', 'tempo'}):
             raise ValueError(f"Unsupported augmentations: {augmentations.keys()}")
+        self.augmentations = augmentations
+        self.test_set_name = test_dataset
+        self.hung_data = hung_data
+        self.no_val = no_val
+        self.spect_fps = spect_fps
+        self.length_based_oversampling_factor = length_based_oversampling_factor
+        self.fold = fold
         self.predict_datasplit = predict_datasplit
 
-
     def setup(self, stage=None):
-        if self.initialized:
+        if self.initialized.get(stage, False):
             return
-        # split the dataset in train, validation, and test
-        test_idx = self.metadata_df.index[self.metadata_df["dataset"] == self.test_dataset]
-        train_idx = np.zeros(0, dtype=int)
-        val_idx = np.zeros(0, dtype=int)
-        for dataset, split_df in self.trainval_splits.items():
-            df_subset = self.metadata_df[self.metadata_df["dataset"] == dataset].copy()
-            if df_subset.shape[0] != split_df.shape[0]:
-                raise ValueError(f"Dataset {dataset} has {df_subset.shape[0]} pieces, but split file has {split_df.shape[0]} pieces")
-            df_subset["piece"] = df_subset["spect_folder"].apply(lambda p: Path(p).name)
-            if set(df_subset.piece) != set(split_df.piece):
-                raise ValueError(f"Piece names and split file do not match for dataset {dataset}")
-            split_data_df = df_subset.reset_index().merge(split_df, on='piece').set_index('index')
-            train_idx = np.concatenate([train_idx, split_data_df.index[split_data_df.split == "train"]])
-            val_idx = np.concatenate([val_idx, split_data_df.index[split_data_df.split == "val"]])
-        # # append train-only datasets
-        # treat rwc as 3 different datasets with rwc_popular, rwc_jazz, rwc_classical, rwc_royalty-free. Necessary for literature-compatible dataset selection
-        if "rwc" in self.metadata_df.dataset.unique():
-            self.metadata_df.loc[self.metadata_df.dataset == "rwc", "dataset"] = self.metadata_df.loc[self.metadata_df.dataset == "rwc", "spect_folder"].apply(lambda p: "rwc_" + Path(p).name.split("_")[1])
-        if self.hung_data:
-            # use the same train dataset from MODELING BEATS AND DOWNBEATS WITH A TIME-FREQUENCY TRANSFORMER (validation set stay the same with all datasets)
-            hung_train_datasets = ["hainsworth", "ballroom", "hjdb", "beatles", "rwc_popular", "simac", "smc", "harmonix"]
-            train_idx = train_idx[self.metadata_df["dataset"][train_idx].isin(hung_train_datasets)]
-        if self.no_val:
-            print("No validation set. Training on all data.")
-            # train on all available data (escluding test). Validation metrics are still computed for code compatibility, but do not convey any useful information.
-            if self.hung_data:
-                # exclude the no hung datasets from the validation set before merging train and val
-                val_idx = val_idx[self.metadata_df["dataset"][val_idx].isin(hung_train_datasets)]
-            train_idx = np.concatenate([train_idx, val_idx.copy()])
-        if self.length_based_oversampling_factor and self.train_length is not None:
-            # oversample the training set according to the audio_length information, so that long pieces are more likely to be sampled
-            old_len = len(train_idx)
-            piece_oversampling_factor = np.round(self.length_based_oversampling_factor * self.metadata_df["spect_len_ts0"][train_idx].values / (self.train_length)).astype(int)
-            piece_oversampling_factor = np.clip(piece_oversampling_factor, 1, None)
-            train_idx = np.repeat(train_idx, piece_oversampling_factor)
-            print(f"Training set oversampled from {old_len} to {len(train_idx)} excerpts.")
-        # print which datasets were used
-        trainsets = set(self.metadata_df["dataset"][train_idx].unique())
-        print("Datasets in train set:", sorted(trainsets))
-        valsets = set(self.metadata_df["dataset"][val_idx].unique())
-        print("Datasets in val set:", sorted(valsets))
-        testsets = set(self.metadata_df["dataset"][test_idx].unique())
-        print("Datasets in test set:", sorted(testsets))
-        # print which datasets were not used
-        usedsets = trainsets | valsets | testsets
-        csvsets = set(self.metadata_df["dataset"].unique())
-        if (csvsets - usedsets):
-            print("Datasets in spectrogram CSV, but not used:", sorted(csvsets - usedsets))
-        # go back to rwc dataset to avoid further problems with paths
-        self.metadata_df.loc[self.metadata_df.dataset.str.startswith("rwc_"), "dataset"] = "rwc"
 
-        print("Creating datasets...")
-        shared_kwargs = dict(data_folder=self.data_dir,
-                            spect_fps=self.spect_fps,)
-        if stage is None or stage == "fit":
-            self.train_dataset = BeatTrackingDataset(self.metadata_df.iloc[train_idx].copy(),
-                                                    deterministic=False,
-                                                    augmentations=self.augmentations,
-                                                    train_length=self.train_length,
-                                                    **shared_kwargs)
-            self.val_dataset = BeatTrackingDataset(self.metadata_df.iloc[val_idx].copy(),
-                                                    deterministic=True,
-                                                    augmentations={},
-                                                    train_length=self.train_length,
-                                                    **shared_kwargs)
-        if stage is None or stage == "test" or self.predict_datasplit == "test":
-            self.test_dataset = BeatTrackingDataset(self.metadata_df.iloc[test_idx].copy(),
+        # set up the paths
+        annotation_dir = self.data_dir / 'annotations'
+
+        # load train/val splits
+        if stage in ("fit", "validate"):
+            self.val_items = []
+            self.train_items = []
+            split_file = "8-fold.split" if self.fold is not None else "single.split"
+            for dataset_dir in annotation_dir.iterdir():
+                if not dataset_dir.is_dir() or not (dataset_dir / split_file).exists():
+                    continue
+                dataset = dataset_dir.name
+                if dataset == self.test_set_name:
+                    continue
+                split = pd.read_csv(dataset_dir / split_file, header=None,
+                                    names=["piece", "part"], sep="\t")
+                if self.fold is not None:
+                    # CV: use given fold for validation, rest for training
+                    self.val_items.extend(f"{dataset}/{stem}"
+                                          for stem in split.piece[split.part == self.fold])
+                    self.train_items.extend(f"{dataset}/{stem}"
+                                            for stem in split.piece[split.part != self.fold])
+                else:
+                    # single split: marked as val and train
+                    self.val_items.extend(f"{dataset}/{stem}"
+                                          for stem in split.piece[split.part == "val"])
+                    self.train_items.extend(f"{dataset}/{stem}"
+                                            for stem in split.piece[split.part == "train"])
+            if self.no_val:
+                # Train on all available data (excluding the test set).
+                # For compatibility, validation metrics are still computed
+                # on the original validation set now included in training.
+                self.train_items.extend(self.val_items)
+            if self.hung_data:
+                # Use the training datasets from MODELING BEATS AND DOWNBEATS
+                # WITH A TIME-FREQUENCY TRANSFORMER (for comparability, the
+                # validation set stays the same, with all datasets).
+                regexp = re.compile("^(hainsworth/|ballroom/|hjdb/|beatles/|rwc/rwc_popular|simac/|smc/|harmonix/|).*$")
+                self.train_items = [item for item in self.train_items if regexp.match(item)]
+            self.val_items.sort()
+            self.train_items.sort()
+
+        # load validation set
+        if stage in ("fit", "validate"):
+            self.val_dataset = BeatTrackingDataset(self.val_items,
+                                                   deterministic=True,
+                                                   augmentations={},
+                                                   train_length=self.train_length,
+                                                   data_folder=self.data_dir,
+                                                   spect_fps=self.spect_fps)
+            print("Validation set:", len(self.val_dataset), "items from:",
+                  *sorted(set(item.split('/', 1)[0] for item in self.val_items)))
+            self.initialized["validate"] = True
+
+        # load training set
+        if stage == "fit":
+            self.train_dataset = BeatTrackingDataset(self.train_items,
+                                                     deterministic=False,
+                                                     augmentations=self.augmentations,
+                                                     train_length=self.train_length,
+                                                     data_folder=self.data_dir,
+                                                     spect_fps=self.spect_fps,
+                                                     length_based_oversampling_factor=self.length_based_oversampling_factor)
+            print("Training set:", len(self.train_dataset), "items from:",
+                  *sorted(set(item.split('/', 1)[0] for item in self.train_items)))
+            self.initialized["fit"] = True
+
+        # load test set
+        if stage == "test":
+            test_annotations_dir = (annotation_dir / self.test_set_name / "annotations" / "beats")
+            self.test_items = sorted(f"{self.test_set_name}/{item.stem}"
+                                     for item in test_annotations_dir.glob("*.beats"))
+            self.test_dataset = BeatTrackingDataset(self.test_items,
                                                     deterministic=True,
                                                     augmentations={},
                                                     train_length=None,
-                                                    **shared_kwargs)
-        if self.predict_datasplit == "test":
-            self.predict_dataset = self.test_dataset
-        else:
-            # we need to create new datasets with full pieces, since val and train datasets are only excerpts
-            self.predict_dataset = BeatTrackingDataset(self.metadata_df.iloc[eval(self.predict_datasplit + "_idx")].copy(),
-                                                deterministic=True,
-                                                augmentations={},
-                                                train_length=None,
-                                                **shared_kwargs)
-        for part in 'train', 'val', 'test':
-            if hasattr(self, part + '_dataset'):
-                print(f"{part} size:", len(getattr(self, part + '_dataset')))
-        self.initialized = True
+                                                    data_folder=self.data_dir,
+                                                    spect_fps=self.spect_fps)
+            print("Test set:", len(self.test_dataset), "items from:",
+                  self.test_set_name)
+            self.initialized["test"] = True
+
+        # load prediction set
+        if stage == "predict":
+            if self.predict_datasplit == "test":
+                self.setup("test")
+                # we can directly use the test dataset for predictions
+                self.predict_dataset = self.test_dataset
+            else:
+                if self.predict_datasplit == "train":
+                    self.setup("fit")
+                    items = self.train_items
+                elif self.predict_datasplit == "val":
+                    self.setup("validate")
+                    items = self.val_items
+                # for prediction, we want to use full items (train_length=None)
+                self.predict_dataset = BeatTrackingDataset(items,
+                                                           deterministic=True,
+                                                           augmentations={},
+                                                           train_length=None,
+                                                           data_folder=self.data_dir,
+                                                           spect_fps=self.spect_fps)
 
     def train_dataloader(self):
         return DataLoader(self.train_dataset, num_workers=self.num_workers, batch_size=self.batch_size, shuffle=True, drop_last=True, pin_memory=True)
@@ -375,10 +379,14 @@ class BeatDataModule(pl.LightningDataModule):
         """
         # find the positive weight for the loss as a ratio between (down)beat and non-(down)beat annotation
         dataset = self.train_dataset
-        all_frames = sum(i["spect_lengths"][0] for i in dataset.items)
-        all_frames_db = sum(item["spect_lengths"][0] for item in dataset.items if item["downbeat_mask"] ) # consider only datasets which have downbeat information
-        beat_frames = sum(len(i["beat_time"]) for i in dataset.items)
-        downbeat_frames = sum(1 for item in dataset.items if item["downbeat_mask"] for b in item["beat_value"] if b==1)
+        all_frames = all_frames_db = 0
+        for item in dataset.items:
+            frames = len(dataset._get_spect(item))
+            all_frames += frames
+            if item["downbeat_mask"]:
+                all_frames_db += frames
+        beat_frames = sum(len(item["beat_value"]) for item in dataset.items)
+        downbeat_frames = sum((item["beat_value"] == 1).sum() for item in dataset.items if item["downbeat_mask"])
 
         return {"beat" : int(np.round((all_frames - beat_frames * (widen_target_mask*2 +1)) / beat_frames)),
                 "downbeat" : int(np.round((all_frames_db - downbeat_frames * (widen_target_mask*2 +1)) / downbeat_frames)),
@@ -416,18 +424,3 @@ def prepare_annotations(item, start_frame, end_frame, fps):
     truth_orig_beat = truth_orig_beat.tobytes()
     truth_orig_downbeat = truth_orig_downbeat.tobytes()
     return framewise_truth_beat, framewise_truth_downbeat, truth_orig_beat, truth_orig_downbeat
-
-
-def handle_datasets_mismatch(metadata_df):
-    # find what datasets of DATASET_INFO are not in the dataframe
-    missing_datasets = set(DATASET_INFO.keys()) - set(metadata_df.dataset)
-    if missing_datasets:
-        print("Warning: Datasets in DATASET_INFO, but not in the metadata df:", missing_datasets)
-        print("These datasets won't be used.")
-    # find what datasets of the dataframe are not in DATASET_INFO
-    missing_datasets = set(metadata_df.dataset) - set(DATASET_INFO.keys())
-    if missing_datasets:
-        print("Warning: Datasets in the metadata df, but not in DATASET_INFO:", missing_datasets)
-        print("These datasets won't be used.")
-    # return the datasets that are in both
-    return set(metadata_df.dataset) & set(DATASET_INFO.keys())

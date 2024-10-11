@@ -152,7 +152,7 @@ def datamodule_setup(checkpoint, num_workers, datasplit):
     datamodule_hparams["predict_datasplit"] = datasplit
     datamodule_hparams["data_dir"] = data_dir
     datamodule = BeatDataModule(**datamodule_hparams)
-    datamodule.setup(stage="test" if datasplit == "test" else "fit")
+    datamodule.setup(stage="predict")
     return datamodule
 
 
