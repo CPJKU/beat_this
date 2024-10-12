@@ -109,6 +109,11 @@ During inference, PyTorch Lighting is not used, and the checkpoints are converte
 ### Annotations
 All annotations we used to train our model are available [in this Github repo](https://github.com/CPJKU/beat_this_annotations/tree/v1.0). Note that if you want to obtain the exact paper results, you should use [version 1.0](https://github.com/CPJKU/beat_this_annotations/releases/tag/v1.0). Other releases with corrected annotations may be published in the future.
 
+To use the annotations for training or evaluation, you first need to download or clone the repo. After this step you need to make them accessible from `data/annotations/`. You can manually copy the main folder (and rename the root directory `beat_this_annotations` -> `annotations`) or create a symlink, with the command:
+```bash
+ln -s /path/to/beat_this_annotations/ data/annotations
+```
+
 ### Spectrograms
 *This part will be available soon.*
 
