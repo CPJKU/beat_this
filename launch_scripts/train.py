@@ -67,7 +67,7 @@ def main(args):
         no_val=not args.val,
         fold=args.fold,
     )
-    datamodule.setup()
+    datamodule.setup(stage="fit")
 
     # compute positive weights
     pos_weights = datamodule.get_train_positive_weights(widen_target_mask=3)
