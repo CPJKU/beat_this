@@ -171,11 +171,13 @@ class BeatTrackingDataset(Dataset):
             # obtain a view of the excerpt
             spect = spect[start_frame:end_frame]
 
-            # create modifiable copy (for PyTorch, and for mask augmentations)
-            spect = np.require(spect, requirements='WE')
-
-            # augment the spectrogram with mask augmentation (if required)
-            spect = augment_mask_(spect, self.augmentations, self.fps)
+            if 'mask' in self.augmentations:
+                # copy the spectrogram and apply mask augmentation
+                spect = np.copy(spect)
+                spect = augment_mask_(spect, self.augmentations, self.fps)
+            else:
+                # only ensure we have a writeable array (so PyTorch is happy)
+                spect = np.require(spect, requirements='W')
 
             # prepare annotations
             framewise_truth_beat, framewise_truth_downbeat, truth_orig_beat, truth_orig_downbeat = prepare_annotations(item, start_frame, end_frame, self.fps)
