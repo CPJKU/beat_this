@@ -128,7 +128,7 @@ def precomputed_augmentation_filenames(augmentations, ext="npy"):
     return filenames
 
 
-def augment_mask(spect, augmentations: dict, fps: int):
+def augment_mask_(spect, augmentations: dict, fps: int):
     """
     Apply the given masking operations to the spectrogram. The spectrogram is modified in place.
 

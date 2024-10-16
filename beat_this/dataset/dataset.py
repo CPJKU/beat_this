@@ -11,7 +11,7 @@ import pandas as pd
 import numpy as np
 
 from beat_this.utils import index_to_framewise
-from beat_this.dataset.augment import precomputed_augmentation_filenames, augment_pitchtempo, augment_mask
+from beat_this.dataset.augment import precomputed_augmentation_filenames, augment_pitchtempo, augment_mask_
 from beat_this.utils import load_spect, load_spect_bundle
 
 
@@ -175,7 +175,7 @@ class BeatTrackingDataset(Dataset):
             spect = np.require(spect, requirements='WE')
 
             # augment the spectrogram with mask augmentation (if required)
-            spect = augment_mask(spect, self.augmentations, self.fps)
+            spect = augment_mask_(spect, self.augmentations, self.fps)
 
             # prepare annotations
             framewise_truth_beat, framewise_truth_downbeat, truth_orig_beat, truth_orig_downbeat = prepare_annotations(item, start_frame, end_frame, self.fps)
