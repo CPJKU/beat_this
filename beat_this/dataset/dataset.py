@@ -250,7 +250,7 @@ class BeatDataModule(pl.LightningDataModule):
         self.fold = fold
         self.predict_datasplit = predict_datasplit
 
-    def setup(self, stage=None):
+    def setup(self, stage):
         if self.initialized.get(stage, False):
             return
 
