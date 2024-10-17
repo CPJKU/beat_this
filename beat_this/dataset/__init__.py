@@ -262,7 +262,7 @@ class BeatDataModule(pl.LightningDataModule):
         if stage in ("fit", "validate"):
             self.val_items = []
             self.train_items = []
-            split_file = "8-fold.split" if self.fold is not None else "single.split"
+            split_file = "8-folds.split" if self.fold is not None else "single.split"
             for dataset_dir in annotation_dir.iterdir():
                 if not dataset_dir.is_dir() or not (dataset_dir / split_file).exists():
                     continue
