@@ -107,25 +107,37 @@ During inference, PyTorch Lighting is not used, and the checkpoints are converte
 ## Data
 
 ### Annotations
-All annotations we used to train our model are available [in this Github repo](https://github.com/CPJKU/beat_this_annotations/tree/v1.0). Note that if you want to obtain the exact paper results, you should use [version 1.0](https://github.com/CPJKU/beat_this_annotations/releases/tag/v1.0). Other releases with corrected annotations may be published in the future.
+All annotations we used to train our models are available [in a separate GitHub repo](https://github.com/CPJKU/beat_this_annotations). Note that if you want to obtain the exact paper results, you should use [version 1.0](https://github.com/CPJKU/beat_this_annotations/releases/tag/v1.0). Other releases with corrected annotations may be published in the future.
 
-To use the annotations for training or evaluation, you first need to download or clone the repo. After this step you need to make them accessible from `data/annotations/`. You can manually copy the main folder (and rename the root directory `beat_this_annotations` -> `annotations`) or create a symlink, with the command:
+To use the annotations for training or evaluation, you first need to download and extract or clone the annotations repo to `data/annotations`:
 ```bash
-ln -s /path/to/beat_this_annotations/ data/annotations
+mkdir -p data
+git clone https://github.com/CPJKU/beat_this_annotations data/annotations
+# cd data/annotations; git checkout v1.0  # optional
 ```
-
 ### Spectrograms
-*This part will be available soon.*
+The spectrograms used for training are released [as a Zenodo dataset](https://zenodo.org/records/13922116). They are distributed as a separate .zip file per dataset, each holding a .npz file with the spectrograms. For evaluation, download `gtzan.zip`; for training, download all (except `beat_this_annotations.zip`). Extract all .zip files into `data/audio/spectrograms`, such that you have, e.g., `data/audio/spectrograms/gtzan.npz`. (The code also supports directories of .npy files such as `data/audio/spectrograms/gtzan/gtzan_blues_00000/track.npy`, which you can obtain by unzipping `gtzan.npz`.)
 
+### Recreating spectrograms
+If you have access to the original audio files, or you want to add another dataset, create a text file `data/audio_paths.tsv` that has, on each line, the name of a dataset, a tab character, and the path to the audio directory. The corresponding annotations must already be present under `data/annotations`. Install pandas and pedalboard:
+```bash
+pip install pandas pedalboard
+```
+Then run:
+```bash
+python launch_scripts/preprocess_audio.py
+```
+It will create monophonic 22 kHz wave files in `data/audio/mono_tracks`, convert those to spectrograms in `data/audio/spectrograms`, and finally create spectrogram bundles. Intermediary files are kept and will not be recreated when rerunning the script.
 
 
 ## Reproducing metrics from the paper
 
-*This part won't work until the data release. We still provide the commands for reference.*
-
 ### Requirements
 
-In addition to the [inference requirements](#requirements), computing evaluation metrics requires PyTorch Lightning and `mir_eval`, as well as obtaining and setting up the GTZAN dataset. *This part will be completed soon.*
+In addition to the [inference requirements](#requirements), computing evaluation metrics requires obtaining and setting up the GTZAN dataset as indicated above, and installing PyTorch Lightning, Pandas and `mir_eval`:
+```bash
+pip install pytorch_lightning pandas mir_eval
+```
 
 ### Command line
 
@@ -145,7 +157,6 @@ Hung data:
 ```bash
 python launch_scripts/compute_paper_metrics.py --models hung0 hung1 hung2 --datasplit test
 ```
-
 
 With DBN (this requires installing the madmom package):
 ```bash
@@ -202,7 +213,46 @@ python launch_scripts/compute_paper_metrics.py --models single_noshifttolnoweigh
 
 ## Training
 
-*This part will be available soon.*
+### Requirements
+
+In addition to the [inference requirements](#requirements) and [evaluation requirements](#requirements-1), training a model requires obtaining and [setting up all 16 datasets](#data).
+
+### Command line
+
+#### Train models listed in Table 2 in the paper.
+
+Main results for our system (final0, final1, final2):
+```bash
+for seed in 0 1 2; do
+    python launch_scripts/train.py --seed=$seed --no-val
+done
+```
+
+Smaller model (small0, small1, small2):
+```bash
+for seed in 0 1 2; do
+    python launch_scripts/train.py --seed=$seed --no-val --transformer-dim=128
+done
+```
+
+Hung data (hung0, hung1, hung2):
+```bash
+for seed in 0 1 2; do
+    python launch_scripts/train.py --seed=$seed --no-val --hung-data
+done
+```
+
+#### Train models with 8-fold cross-validation, corresponding to Table 1 in the paper.
+
+```bash
+for fold in {0..7}; do
+    python launch_scripts/train.py --seed=0 --fold=$fold
+done
+```
+
+#### Train models for the ablation studies, correponding to Table 3 in the paper.
+
+*To be completed.*
 
 
 ## Reusing the loss
