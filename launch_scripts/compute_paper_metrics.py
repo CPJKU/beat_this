@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from beat_this.dataset.dataset import BeatDataModule
+from beat_this.dataset import BeatDataModule
 from beat_this.model.pl_module import PLBeatThis
 from beat_this.inference import load_checkpoint
 

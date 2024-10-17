@@ -8,7 +8,7 @@ import torch
 import argparse
 from pathlib import Path
 
-from beat_this.dataset.dataset import BeatDataModule
+from beat_this.dataset import BeatDataModule
 from beat_this.model.pl_module import PLBeatThis
 
 
