@@ -12,7 +12,7 @@ import numpy as np
 
 from beat_this.utils import index_to_framewise
 from beat_this.dataset.augment import precomputed_augmentation_filenames, augment_pitchtempo, augment_mask_
-from beat_this.utils import load_spect, load_spect_bundle
+from .mmnpz import MemmappedNpzFile
 
 
 class BeatTrackingDataset(Dataset):
@@ -78,14 +78,14 @@ class BeatTrackingDataset(Dataset):
         for dataset in datasets:
             npz_file = (self.spect_basepath / dataset).with_suffix('.npz')
             if npz_file.exists():
-                for name, spect in load_spect_bundle(npz_file).items():
-                    spects[dataset + '/' + name] = spect
+                spects[dataset] = MemmappedNpzFile(npz_file)
         return spects
 
     def _load_dataset_item(self, item_name):
         # stop if not all the augmented audio files are there
+        dataset, remainder = item_name.split('/', 1)
         for aug_filename in precomputed_augmentation_filenames(self.augmentations):
-            if ((f"{item_name}/{aug_filename}") not in self.spects and
+            if ((f"{remainder}/{aug_filename[:-4]}") not in self.spects.get(dataset, ()) and
                 not (self.spect_basepath / item_name / aug_filename).exists()):
                 print(f"Skipping {item_name} because not all necessary spectrograms are there.")
                 return
@@ -121,9 +121,10 @@ class BeatTrackingDataset(Dataset):
 
     def _get_spect(self, item):
         try:
-            spect = self.spects[str(item["spect_path"])]
+            dataset, filename = str(item["spect_path"]).split('/', 1)
+            spect = self.spects[dataset][filename[:-4]]
         except KeyError:
-            spect = load_spect(self.spect_basepath / item["spect_path"])
+            spect = np.load(self.spect_basepath / item["spect_path"], mmap_mode='r')
         return spect
 
     def get_frame_count(self, index):
