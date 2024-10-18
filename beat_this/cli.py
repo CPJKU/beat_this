@@ -2,15 +2,16 @@
 """
 Beat This! command line inference tool.
 """
-import sys
 import argparse
+import sys
 from pathlib import Path
 
+import torch
 try:
     import tqdm
 except ImportError:
     tqdm = None
-import torch
+
 from beat_this.inference import File2File
 
 

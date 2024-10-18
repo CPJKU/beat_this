@@ -1,13 +1,13 @@
 import inspect
 
+import numpy as np
+import soxr
 import torch
 import torch.nn.functional as F
-import soxr
-import numpy as np
 
-from beat_this.preprocessing import load_audio, LogMelSpect
 from beat_this.model.beat_tracker import BeatThis
 from beat_this.model.postprocessor import Postprocessor
+from beat_this.preprocessing import LogMelSpect, load_audio
 from beat_this.utils import replace_state_dict_key, save_beat_tsv
 
 CHECKPOINT_URL = "https://cloud.cp.jku.at/index.php/s/7ik4RrBKTS273gp"

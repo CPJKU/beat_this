@@ -1,11 +1,12 @@
-from pytorch_lightning import Trainer, seed_everything
-import numpy as np
 import argparse
 from pathlib import Path
 
+import numpy as np
+from pytorch_lightning import Trainer, seed_everything
+
 from beat_this.dataset import BeatDataModule
-from beat_this.model.pl_module import PLBeatThis
 from beat_this.inference import load_checkpoint
+from beat_this.model.pl_module import PLBeatThis
 
 # for repeatability
 seed_everything(0, workers=True)

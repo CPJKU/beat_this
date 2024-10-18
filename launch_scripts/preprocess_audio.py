@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 import argparse
+import concurrent.futures
 import os
 from pathlib import Path
 from zipfile import ZipFile
-import concurrent.futures
 
-from tqdm import tqdm
-import soxr
 import numpy as np
 import pandas as pd
-from pedalboard import time_stretch, Pedalboard, PitchShift
+import soxr
 import torch
 import torchaudio
+from pedalboard import Pedalboard, PitchShift, time_stretch
+from tqdm import tqdm
 
-from beat_this.preprocessing import load_audio, LogMelSpect
 from beat_this.dataset.augment import precomputed_augmentation_filenames
+from beat_this.preprocessing import LogMelSpect, load_audio
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 

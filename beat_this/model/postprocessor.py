@@ -1,8 +1,8 @@
 from concurrent.futures import ThreadPoolExecutor
 
+import numpy as np
 import torch
 import torch.nn.functional as F
-import numpy as np
 from einops import rearrange
 
 

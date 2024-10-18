@@ -1,6 +1,6 @@
 import numpy as np
-import torchaudio
 import torch
+import torchaudio
 
 
 def load_audio(path, dtype="float64"):

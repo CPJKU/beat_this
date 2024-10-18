@@ -1,6 +1,7 @@
-from pathlib import Path
-import torch
 import argparse
+from pathlib import Path
+
+import torch
 
 
 def main(args):

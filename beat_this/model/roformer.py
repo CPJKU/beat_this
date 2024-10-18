@@ -4,11 +4,10 @@ at https://github.com/lucidrains/BS-RoFormer (under MIT License).
 """
 
 import torch
-from torch import nn
-from torch.nn import Module, ModuleList
 import torch.nn.functional as F
 from einops import rearrange
-
+from torch import nn
+from torch.nn import Module, ModuleList
 
 # helper functions
 

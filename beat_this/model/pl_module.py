@@ -3,18 +3,18 @@ Pytorch Lightning module, wraps a BeatThis model along with losses, metrics and
 optimizers for training.
 """
 
-from typing import Any
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 
-import torch
-import numpy as np
 import mir_eval
+import numpy as np
+import torch
 from pytorch_lightning import LightningModule
 
-from beat_this.model.beat_tracker import BeatThis
-from beat_this.model.postprocessor import Postprocessor
 import beat_this.model.loss
 from beat_this.inference import split_predict_aggregate
+from beat_this.model.beat_tracker import BeatThis
+from beat_this.model.postprocessor import Postprocessor
 from beat_this.utils import replace_state_dict_key
 
 

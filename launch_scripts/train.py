@@ -1,12 +1,10 @@
-from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.callbacks import (
-    ModelCheckpoint,
-    LearningRateMonitor,
-)
-from pytorch_lightning import Trainer, seed_everything
-import torch
 import argparse
 from pathlib import Path
+
+import torch
+from pytorch_lightning import Trainer, seed_everything
+from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
+from pytorch_lightning.loggers import WandbLogger
 
 from beat_this.dataset import BeatDataModule
 from beat_this.model.pl_module import PLBeatThis

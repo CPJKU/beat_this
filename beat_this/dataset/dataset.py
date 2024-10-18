@@ -1,21 +1,22 @@
-from pathlib import Path
 import concurrent.futures
-import re
 import itertools
 import json
+import re
+from pathlib import Path
 
-import torch
-from torch.utils.data import Dataset, DataLoader
-import pytorch_lightning as pl
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pytorch_lightning as pl
+import torch
+from torch.utils.data import DataLoader, Dataset
 
-from beat_this.utils import index_to_framewise
 from beat_this.dataset.augment import (
-    precomputed_augmentation_filenames,
-    augment_pitchtempo,
     augment_mask_,
+    augment_pitchtempo,
+    precomputed_augmentation_filenames,
 )
+from beat_this.utils import index_to_framewise
+
 from .mmnpz import MemmappedNpzFile
 
 

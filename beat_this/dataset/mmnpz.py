@@ -2,9 +2,9 @@
 Support for memory-mapping uncompressed .npz files.
 """
 
+import struct
 from collections.abc import Mapping
 from zipfile import ZipFile
-import struct
 
 import numpy as np
 

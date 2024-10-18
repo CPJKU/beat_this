@@ -5,10 +5,10 @@ Model definitions for the Beat This! beat tracker.
 from collections import OrderedDict
 
 import torch
-from torch import nn
 from einops import rearrange
 from einops.layers.torch import Rearrange
 from rotary_embedding_torch import RotaryEmbedding
+from torch import nn
 
 from beat_this.model import roformer
 from beat_this.utils import replace_state_dict_key
