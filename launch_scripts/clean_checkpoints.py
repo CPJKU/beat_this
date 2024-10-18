@@ -11,10 +11,6 @@ def main(args):
 
     # load the lightning checkpoit
     checkpoint = torch.load(args.input_path, map_location="cpu")
-    # remove old unused hyperparameters
-    checkpoint["datamodule_hyper_parameters"].pop("data_dir")
-    checkpoint["hyper_parameters"]["dropout"].pop("middle", None)
-    checkpoint["hyper_parameters"].pop("predict_full_pieces", None)
 
     # clean and keep only the keys "state_dict" and "datamodule" to save space
     checkpoint = {
