@@ -101,7 +101,9 @@ def derive_output_path(input_path, suffix, append, output=None, parent=None):
         return output_path.with_suffix(suffix)
 
 
-def run(inputs, model, output, suffix, append, skip_existing, touch_first, dbn, gpu, float16):
+def run(
+    inputs, model, output, suffix, append, skip_existing, touch_first, dbn, gpu, float16
+):
     # determine device
     if torch.cuda.is_available() and gpu >= 0:
         device = torch.device(f"cuda:{gpu}")

@@ -110,9 +110,7 @@ class SplittedShiftTolerantBCELoss(torch.nn.Module):
         super().__init__()
         self.tolerance = 3
         self.spread_preds = tolerance
-        self.spread_targets = (
-            2 * tolerance
-        )  # targets are always spreaded twice as much
+        self.spread_targets = 2 * tolerance  # targets are always spreaded twice as much
         self.register_buffer(
             "pos_weight",
             torch.tensor(pos_weight, dtype=torch.get_default_dtype()),

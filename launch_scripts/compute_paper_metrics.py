@@ -56,14 +56,14 @@ def main(args):
             # computing result variability for the same dataset and different model seeds
             # create datamodule only once, as we assume it is the same for all models
             checkpoint = load_checkpoint(args.models[0])
-            datamodule = datamodule_setup(
-                checkpoint, args.num_workers, args.datasplit
-            )
+            datamodule = datamodule_setup(checkpoint, args.num_workers, args.datasplit)
             # create model and trainer
             all_metrics = []
             for checkpoint_path in args.models:
                 checkpoint = load_checkpoint(checkpoint_path)
-                model, trainer = plmodel_setup(checkpoint, args.eval_trim_beats, args.dbn, args.gpu)
+                model, trainer = plmodel_setup(
+                    checkpoint, args.eval_trim_beats, args.dbn, args.gpu
+                )
 
                 metrics, dataset, preds, piece = compute_predictions(
                     model, trainer, datamodule.predict_dataloader()
@@ -174,9 +174,9 @@ def plmodel_setup(checkpoint, eval_trim_beats, dbn, gpu):
         checkpoint["hyper_parameters"]["eval_trim_beats"] = eval_trim_beats
     if dbn is not None:
         checkpoint["hyper_parameters"]["use_dbn"] = dbn
-    
-    model = PLBeatThis(**checkpoint['hyper_parameters'])
-    model.load_state_dict(checkpoint['state_dict'])
+
+    model = PLBeatThis(**checkpoint["hyper_parameters"])
+    model.load_state_dict(checkpoint["state_dict"])
     # set correct device and accelerator
     if gpu >= 0:
         devices = [gpu]
