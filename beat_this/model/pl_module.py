@@ -141,7 +141,7 @@ class PLBeatThis(LightningModule):
 
         # if the input was not batched, postp_target is an array instead of a tuple of arrays
         # make it a tuple for consistency
-        if type(postp_target) != tuple:
+        if not isinstance(postp_target, tuple):
             postp_target = (postp_target,)
 
         with ThreadPoolExecutor() as executor:
