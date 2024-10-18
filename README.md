@@ -13,7 +13,7 @@ Official implementation of the beat tracker from the ISMIR 2024 paper "[Beat Thi
 
 ## Inference
 
-To predict beats for audio files, you can either use our command line tool or call the beat tracker from Python. Both have the same requirements, unless you go for the online demo.
+To predict beats for audio files, you can either use our command line tool or call the beat tracker from Python. Both have the same requirements unless you go for the online demo.
 
 ### Online demo
 
@@ -83,7 +83,7 @@ Main models:
 * `final0`, `final1`, `final2`: Our main model, trained on all data except the GTZAN dataset, with three different seeds. This corresponds to "Our system" in Table 2 of the paper. About 78 MB per model.
 * `small0`, `small1`, `small2`: A smaller model, again trained on all data except GTZAN, with three different seeds. This corresponds to "smaller model" in Table 2 of the paper. About 8.1 MB per model.
 * `single_final0`, `single_final1`, `single_final2`: Our main model, trained on the single split described in Section 4.1 of the paper, with three different seeds. This corresponds to "Our system" in Table 3 of the paper. About 78 MB per model.
-* `fold0`, `fold1`, `fold2`, `fold3`, `fold4`, `fold5`, `fold6`, `fold7`: Our main model, trained in the 8-fold cross validation setting with a single seed per fold. This corresponds to "Our" in Table 1 of the paper. About 78 MB per model.
+* `fold0`, `fold1`, `fold2`, `fold3`, `fold4`, `fold5`, `fold6`, `fold7`: Our main model, trained in the 8-fold cross-validation setting with a single seed per fold. This corresponds to "Our" in Table 1 of the paper. About 78 MB per model.
 
 Other models, available mainly for result reproducibility:
 * `hung0`, `hung1`, `hung2`: A model trained on all the data used by the "Modeling Beats and Downbeats with a Time-Frequency Transformer" system by Hung et al. (except GTZAN dataset), with three different seeds. This corresponds to "limited to data of [10]" in Table 2 of the paper.
@@ -101,7 +101,7 @@ Please be aware that the results may be unfairly good if you run inference on an
 
 If you need to run an evaluation on some datasets we used other than GTZAN, consider targeting the validation part of the single split (with `single_final*`), or of the 8-fold cross-validation (with `fold*`).
 
-All the models are provided as PyTorch Lightning checkpoints, stripped of the optimizer state to reduce their size. This is useful for reproducing the paper results, or verifying the hyper parameters (stored in the checkpoint under `hyper_parameters` and `datamodule_hyper_parameters`).
+All the models are provided as PyTorch Lightning checkpoints, stripped of the optimizer state to reduce their size. This is useful for reproducing the paper results or verifying the hyperparameters (stored in the checkpoint under `hyper_parameters` and `datamodule_hyper_parameters`).
 During inference, PyTorch Lighting is not used, and the checkpoints are converted and loaded into vanilla PyTorch modules.
 
 ## Data
@@ -127,7 +127,7 @@ Then run:
 ```bash
 python launch_scripts/preprocess_audio.py
 ```
-It will create monophonic 22 kHz wave files in `data/audio/mono_tracks`, convert those to spectrograms in `data/audio/spectrograms`, and, finally, create spectrogram bundles. Intermediary files are kept and will not be recreated when rerunning the script.
+It will create monophonic 22 kHz wave files in `data/audio/mono_tracks`, convert those to spectrograms in `data/audio/spectrograms`, and create spectrogram bundles. Intermediary files are kept and will not be recreated when rerunning the script.
 
 
 ## Reproducing metrics from the paper
@@ -138,7 +138,7 @@ In addition to the [inference requirements](#requirements), computing evaluation
 ```bash
 pip install pytorch_lightning pandas mir_eval
 ```
-You also need to obtain and set up the annotations and spectrogram datasets [as indicated above](#data). Specifically, for commands that include `--datasplit test` it suffice to have the GTZAN dataset, while for commands that include  `--datasplit val` all other datasets are required.
+You must also obtain and set up the annotations and spectrogram datasets [as indicated above](#data). Specifically, the GTZAN dataset suffices for commands that include `--data split test', while all other datasets are required for commands that include `--data split val'.
 
 
 ### Command line
@@ -252,7 +252,7 @@ for fold in {0..7}; do
 done
 ```
 
-#### Train models for the ablation studies, correponding to Table 3 in the paper.
+#### Train models for the ablation studies, corresponding to Table 3 in the paper.
 
 Our system (single_final0, single_final1, single_final2):
 ```bash
