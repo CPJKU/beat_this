@@ -1,10 +1,7 @@
 from pytorch_lightning import Trainer, seed_everything
-import torch
 import numpy as np
 import argparse
 from pathlib import Path
-
-import pandas as pd
 
 from beat_this.dataset import BeatDataModule
 from beat_this.model.pl_module import PLBeatThis
@@ -39,8 +36,6 @@ def main(args):
             k: {d: np.mean(v[dataset == d]) for d in np.unique(dataset)}
             for k, v in metrics.items()
         }
-        # create a dataframe with the dataset_metrics
-        dataset_metrics_df = pd.DataFrame(dataset_metrics)
         # print for dataset
         print("Metrics")
         for k, v in averaged_metrics.items():
@@ -128,8 +123,6 @@ def main(args):
                 }
                 for k, v in all_piece_metrics.items()
             }
-            # create a dataframe with the dataset_metrics
-            dataset_metrics_df = pd.DataFrame(dataset_metrics)
             # print for dataset
             print("Dataset metrics")
             for k, v in dataset_metrics.items():

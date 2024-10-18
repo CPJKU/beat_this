@@ -14,7 +14,6 @@ import torch
 import torchaudio
 
 from beat_this.preprocessing import load_audio, LogMelSpect
-from beat_this.utils import filename_to_augmentation
 from beat_this.dataset.augment import precomputed_augmentation_filenames
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"

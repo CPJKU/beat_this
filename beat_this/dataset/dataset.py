@@ -285,7 +285,6 @@ class BeatDataModule(pl.LightningDataModule):
         super().__init__()
         self.save_hyperparameters()
         self.initialized = {}
-        self.dataset_info = {}
         # remember all arguments
         self.data_dir = Path(data_dir)
         self.batch_size = batch_size

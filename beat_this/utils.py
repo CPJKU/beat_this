@@ -1,8 +1,5 @@
 from pathlib import Path
 from itertools import chain
-from zipfile import ZipFile
-import struct
-
 import numpy as np
 
 
