@@ -116,10 +116,10 @@ git clone https://github.com/CPJKU/beat_this_annotations data/annotations
 # cd data/annotations; git checkout v1.0  # optional
 ```
 ### Spectrograms
-The spectrograms used for training are released [as a Zenodo dataset](https://zenodo.org/records/13922116). They are distributed as a separate .zip file per dataset, each holding a .npz file with the spectrograms. For evaluation, download `gtzan.zip`; for training, download all (except `beat_this_annotations.zip`). Extract all .zip files into `data/audio/spectrograms`, such that you have, e.g., `data/audio/spectrograms/gtzan.npz`. (The code also supports directories of .npy files such as `data/audio/spectrograms/gtzan/gtzan_blues_00000/track.npy`, which you can obtain by unzipping `gtzan.npz`.)
+The spectrograms used for training are released [as a Zenodo dataset](https://zenodo.org/records/13922116). They are distributed as a separate .zip file per dataset, each holding a .npz file with the spectrograms. For evaluation of the test set, download `gtzan.zip`; for training and evaluation of the validation set, download all (except `beat_this_annotations.zip`). Extract all .zip files into `data/audio/spectrograms`, so that you have, for example, `data/audio/spectrograms/gtzan.npz`. As an alternative, the code also supports directories of .npy files such as `data/audio/spectrograms/gtzan/gtzan_blues_00000/track.npy`, which you can obtain by unzipping `gtzan.npz`.
 
 ### Recreating spectrograms
-If you have access to the original audio files, or you want to add another dataset, create a text file `data/audio_paths.tsv` that has, on each line, the name of a dataset, a tab character, and the path to the audio directory. The corresponding annotations must already be present under `data/annotations`. Install pandas and pedalboard:
+If you have access to the original audio files, or want to add another dataset, create a text file `data/audio_paths.tsv` that has, on each line, the name of a dataset, a tab character, and the path to the audio directory. The corresponding annotations must also be present under `data/annotations`. Install pandas and pedalboard:
 ```bash
 pip install pandas pedalboard
 ```
@@ -127,17 +127,19 @@ Then run:
 ```bash
 python launch_scripts/preprocess_audio.py
 ```
-It will create monophonic 22 kHz wave files in `data/audio/mono_tracks`, convert those to spectrograms in `data/audio/spectrograms`, and finally create spectrogram bundles. Intermediary files are kept and will not be recreated when rerunning the script.
+It will create monophonic 22 kHz wave files in `data/audio/mono_tracks`, convert those to spectrograms in `data/audio/spectrograms`, and, finally, create spectrogram bundles. Intermediary files are kept and will not be recreated when rerunning the script.
 
 
 ## Reproducing metrics from the paper
 
 ### Requirements
 
-In addition to the [inference requirements](#requirements), computing evaluation metrics requires obtaining and setting up the GTZAN dataset as indicated above, and installing PyTorch Lightning, Pandas and `mir_eval`:
+In addition to the [inference requirements](#requirements), computing evaluation metrics requires installing PyTorch Lightning, Pandas, and `mir_eval`.
 ```bash
 pip install pytorch_lightning pandas mir_eval
 ```
+You also need to obtain and set up the annotations and spectrogram datasets [as indicated above](#data). Specifically, for commands that include `--datasplit test` it suffice to have the GTZAN dataset, while for commands that include  `--datasplit val` all other datasets are required.
+
 
 ### Command line
 
@@ -215,7 +217,7 @@ python launch_scripts/compute_paper_metrics.py --models single_noshifttolnoweigh
 
 ### Requirements
 
-In addition to the [inference requirements](#requirements) and [evaluation requirements](#requirements-1), training a model requires obtaining and [setting up all 16 datasets](#data).
+The training requirements match the [evaluation requirements](#requirements-1) for the validation set. All 16 datasets and annotations must be [correctly set up](#data).
 
 ### Command line
 
@@ -246,13 +248,67 @@ done
 
 ```bash
 for fold in {0..7}; do
-    python launch_scripts/train.py --seed=0 --fold=$fold
+    python launch_scripts/train.py --fold=$fold
 done
 ```
 
 #### Train models for the ablation studies, correponding to Table 3 in the paper.
 
-*To be completed.*
+Our system (single_final0, single_final1, single_final2):
+```bash
+for seed in 0 1 2; do
+    python launch_scripts/train.py --seed=$seed
+done
+```
+
+No sum head (single_nosumhead0, single_nosumhead1, single_nosumhead2):
+```bash
+for seed in 0 1 2; do
+    python launch_scripts/train.py --seed=$seed --no-sum-head
+done
+```
+
+No tempo augmentation (single_notempoaug0, single_notempoaug1, single_notempoaug2):
+```bash
+for seed in 0 1 2; do
+    python launch_scripts/train.py --seed=$seed --no-tempo-augmentation
+done
+```
+
+No mask augmentation (single_nomaskaug0, single_nomaskaug1, single_nomaskaug2):
+```bash
+for seed in 0 1 2; do
+    python launch_scripts/train.py --seed=$seed --no-mask-augmentation
+done
+```
+
+No partial transformers (single_nopartialt0, single_nopartialt1, single_nopartialt2):
+```bash
+for seed in 0 1 2; do
+    python launch_scripts/train.py --seed=$seed --no-partial-transformers
+done
+```
+
+No shift tolerance (single_noshifttol0, single_noshifttol1, single_noshifttol2):
+```bash
+for seed in 0 1 2; do
+    python launch_scripts/train.py --seed=$seed --loss weighted_bce
+done
+```
+
+No pitch augmentation (single_nopitchaug0, single_nopitchaug1, single_nopitchaug2):
+```bash
+for seed in 0 1 2; do
+    python launch_scripts/train.py --seed=$seed --no-pitch-augmentation
+done
+```
+
+No shift tolerance and no weights (single_noshifttolnoweights0, single_noshifttolnoweights1, single_noshifttolnoweights2):
+```bash
+for seed in 0 1 2; do
+    python launch_scripts/train.py --seed=$seed --loss bce
+done
+```
 
 
 ## Reusing the loss
