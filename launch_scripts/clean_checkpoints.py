@@ -25,6 +25,13 @@ def main(args):
             "pytorch-lightning_version",
         ]
     }
+
+    # remove the "data_dir" key from "datamodule_hyper_parameters" because it is a
+    # Posix path and creates problems when loading in Windows.
+    if "data_dir" in checkpoint["datamodule_hyper_parameters"]:
+        del checkpoint["datamodule_hyper_parameters"]["data_dir"]
+
+    # save the cleaned checkpoint
     torch.save(checkpoint, args.output_path)
 
 
