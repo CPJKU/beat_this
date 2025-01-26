@@ -69,7 +69,9 @@ def load_model(
     """
     if checkpoint_path is None:
         model = BeatThis()
-    elif "/" not in checkpoint_path:
+    elif checkpoint_path.startswith("hf:"):
+        model = BeatThis.from_pretrained(checkpoint_path.replace("hf:", "", 1))
+    else:
         checkpoint = load_checkpoint(checkpoint_path, device)
         # Retrieve the model hyperparameters as it could be the small model
         hparams = checkpoint["hyper_parameters"]
@@ -85,8 +87,6 @@ def load_model(
         # state_dict under the "model." prefix; remove the prefix to load it
         state_dict = replace_state_dict_key(checkpoint["state_dict"], "model.", "")
         model.load_state_dict(state_dict)
-    else:
-        model = BeatThis.from_pretrained(checkpoint_path)
 
     return model.to(device).eval()
 
