@@ -50,7 +50,7 @@ If you have a lot of files to process, you can distribute the load over multiple
 ```bash
 for gpu in {0..3}; do beat_this input_dir -o output_dir --touch-first --skip-existing --gpu=$gpu & done
 ```
-If you want to use the DBN for postprocessing, add `--dbn`. The DBN parameters are the default ones from madmom. This requires installing the `madmom` package.
+If you want to use the DBN for postprocessing, add `--dbn`. The DBN parameters are the default ones from madmom. This requires installing the `madmom` package (with `pip install git+https://github.com/CPJKU/madmom.git`, as the current version on PyPI only supports Python<3.10 and numpy<1.20).
 
 ### Python class
 
@@ -134,9 +134,10 @@ It will create monophonic 22 kHz wave files in `data/audio/mono_tracks`, convert
 
 ### Requirements
 
-In addition to the [inference requirements](#requirements), computing evaluation metrics requires installing PyTorch Lightning, Pandas, and `mir_eval`.
+In addition to the [inference requirements](#requirements), computing evaluation metrics requires installing PyTorch Lightning, Pandas, and `mir_eval` (the latter from source, as the current version on PyPI only supports numpy<1.20).
 ```bash
-pip install pytorch_lightning pandas mir_eval
+pip install pytorch_lightning pandas
+pip install https://github.com/mir-evaluation/mir_eval/archive/main.zip
 ```
 You must also obtain and set up the annotations and spectrogram datasets [as indicated above](#data). Specifically, the GTZAN dataset suffices for commands that include `--data split test`, while all other datasets are required for commands that include `--data split val`.
 
