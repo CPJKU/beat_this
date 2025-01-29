@@ -139,7 +139,7 @@ In addition to the [inference requirements](#requirements), computing evaluation
 pip install pytorch_lightning pandas
 pip install https://github.com/mir-evaluation/mir_eval/archive/main.zip
 ```
-You must also obtain and set up the annotations and spectrogram datasets [as indicated above](#data). Specifically, the GTZAN dataset suffices for commands that include `--data split test`, while all other datasets are required for commands that include `--data split val`.
+You must also obtain and set up the annotations and spectrogram datasets [as indicated above](#data). Specifically, the GTZAN dataset suffices for commands that include `--datasplit test`, while all other datasets are required for commands that include `--datasplit val`.
 
 
 ### Command line
