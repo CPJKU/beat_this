@@ -349,7 +349,7 @@ To copy the BeatThis model into your own project, you will need the [`beat_track
 ```bibtex
 @inproceedings{foscarin2024beatthis,
     author = {Francesco Foscarin and Jan Schl{\"u}ter and Gerhard Widmer},
-    title = {Beat this! Accurate beat tracking without DBN postprocessing}
+    title = {Beat this! Accurate beat tracking without {DBN} postprocessing},
     year = 2024,
     month = nov,
     booktitle = {Proceedings of the 25th International Society for Music Information Retrieval Conference (ISMIR)},
