@@ -40,6 +40,8 @@ class LogMelSpect(torch.nn.Module):
         device="cpu",
     ):
         super().__init__()
+        self.sample_rate = sample_rate
+        self.hop_length = hop_length
         self.spect_class = torchaudio.transforms.MelSpectrogram(
             sample_rate=sample_rate,
             n_fft=n_fft,

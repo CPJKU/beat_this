@@ -161,3 +161,45 @@ def test_audio2beats_postprocessor_priority():
     
     # The custom postprocessor should take priority
     assert processor.frames2beats is custom_processor
+
+
+@patch('beat_this.inference.load_model') # Mock to avoid actual model loading
+def test_audio2beats_default_postprocessor_initialization_with_real_spect(mock_load_model):
+    """
+    Tests that Audio2Beats initializes its default postprocessor correctly
+    when relying on a real LogMelSpect instance created by its parent (Audio2Frames).
+    This ensures LogMelSpect has the necessary attributes (sample_rate, hop_length).
+    """
+    # Configure the mock for load_model, which is called in Spect2Frames.__init__
+    mock_nn_model_instance = MagicMock(spec=torch.nn.Module)
+    mock_load_model.return_value = mock_nn_model_instance
+
+    # Instantiate Audio2Beats without a 'postprocessor' argument.
+    # This will trigger the default postprocessor setup, which reads from self.spect.
+    try:
+        processor = Audio2Beats(device="cpu") # This will call super().__init__() chains
+    except AttributeError as e:
+        pytest.fail(
+            "Audio2Beats initialization with default postprocessor failed due to "
+            f"AttributeError. This likely means 'sample_rate' or 'hop_length' is missing "
+            f"from LogMelSpect instance: {e}"
+        )
+    except Exception as e: # Catch any other unexpected initialization error
+        pytest.fail(f"Audio2Beats initialization failed unexpectedly: {e}")
+
+    # Verify that a default postprocessor was created
+    assert isinstance(processor.frames2beats, MinimalPostprocessor), \
+        "Default postprocessor should be MinimalPostprocessor"
+
+    # Verify the FPS calculation was successful (depends on default LogMelSpect params)
+    # Default LogMelSpect: sample_rate=22050, hop_length=441 => fps = 50
+    assert processor.frames2beats.fps == 50, \
+        f"Default postprocessor FPS is incorrect: expected 50, got {processor.frames2beats.fps}"
+
+    # Verify that self.spect is indeed a LogMelSpect instance from beat_this.preprocessing
+    from beat_this.preprocessing import LogMelSpect
+    assert isinstance(processor.spect, LogMelSpect), \
+        "processor.spect should be an instance of LogMelSpect"
+
+    # Ensure the mock for load_model was called (confirms Spect2Frames.__init__ path)
+    mock_load_model.assert_called_once()
