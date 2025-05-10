@@ -23,7 +23,9 @@ def main(args):
         datamodule = datamodule_setup(checkpoint, args.num_workers, args.datasplit)
         # create model and trainer
         model, trainer = plmodel_setup(
-            checkpoint, args.eval_trim_beats, args.dbn, args.gpu
+            checkpoint, args.eval_trim_beats, args.dbn, args.use_dbn_eval,
+            args.eval_dbn_beats_per_bar, args.eval_dbn_min_bpm, 
+            args.eval_dbn_max_bpm, args.eval_dbn_transition_lambda, args.gpu
         )
         # predict
         metrics, dataset, preds, piece = compute_predictions(
@@ -58,7 +60,9 @@ def main(args):
             for checkpoint_path in args.models:
                 checkpoint = load_checkpoint(checkpoint_path)
                 model, trainer = plmodel_setup(
-                    checkpoint, args.eval_trim_beats, args.dbn, args.gpu
+                    checkpoint, args.eval_trim_beats, args.dbn, args.use_dbn_eval,
+                    args.eval_dbn_beats_per_bar, args.eval_dbn_min_bpm, 
+                    args.eval_dbn_max_bpm, args.eval_dbn_transition_lambda, args.gpu
                 )
 
                 metrics, dataset, preds, piece = compute_predictions(
@@ -97,7 +101,9 @@ def main(args):
                 )
                 # create model and trainer
                 model, trainer = plmodel_setup(
-                    checkpoint, args.eval_trim_beats, args.dbn, args.gpu
+                    checkpoint, args.eval_trim_beats, args.dbn, args.use_dbn_eval,
+                    args.eval_dbn_beats_per_bar, args.eval_dbn_min_bpm, 
+                    args.eval_dbn_max_bpm, args.eval_dbn_transition_lambda, args.gpu
                 )
                 # predict
                 metrics, dataset, preds, piece = compute_predictions(
@@ -150,26 +156,61 @@ def datamodule_setup(checkpoint, num_workers, datasplit):
     return datamodule
 
 
-def plmodel_setup(checkpoint, eval_trim_beats, dbn, gpu):
+def plmodel_setup(checkpoint, eval_trim_beats, dbn, use_dbn_eval, 
+                 eval_dbn_beats_per_bar, eval_dbn_min_bpm,
+                 eval_dbn_max_bpm, eval_dbn_transition_lambda, gpu):
     """
     Set up the pytorch lightning model and trainer for evaluation.
 
     Args:
-        checkpoint_path (dict): The dict containing the checkpoint to load.
+        checkpoint (dict): The dict containing the checkpoint to load.
         eval_trim_beats (int or None): The number of beats to trim during evaluation. If None, the setting is taken from the pretrained model.
-        dbn (bool or None): Whether to use the Dynamic Bayesian Network (DBN) module during evaluation. If None, the default behavior from the pretrained model is used.
+        dbn (bool or None): Whether to use the Dynamic Bayesian Network (DBN) module during evaluation (deprecated). If None, the default behavior from the pretrained model is used.
+        use_dbn_eval (bool or None): Whether to use the DBN postprocessor for evaluation. If None, the default behavior from the pretrained model is used.
+        eval_dbn_beats_per_bar (tuple or None): Possible beats per bar for DBN postprocessor. If None, the default is used.
+        eval_dbn_min_bpm (float or None): Minimum BPM for DBN postprocessor. If None, the default is used.
+        eval_dbn_max_bpm (float or None): Maximum BPM for DBN postprocessor. If None, the default is used.
+        eval_dbn_transition_lambda (float or None): Transition lambda for DBN postprocessor. If None, the default is used.
         gpu (int): The index of the GPU device to use for training.
 
     Returns:
         tuple: A tuple containing the initialized pytorch lightning model and trainer.
-
     """
+    hparams = checkpoint["hyper_parameters"]
+    
+    # Override evaluation parameters if provided
     if eval_trim_beats is not None:
-        checkpoint["hyper_parameters"]["eval_trim_beats"] = eval_trim_beats
+        hparams["eval_trim_beats"] = eval_trim_beats
+    
+    # Handle deprecated dbn parameter for backward compatibility
     if dbn is not None:
-        checkpoint["hyper_parameters"]["use_dbn"] = dbn
+        import warnings
+        warnings.warn(
+            "The 'dbn' parameter is deprecated and will be removed in a future version. "
+            "Use 'use_dbn_eval' instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        if use_dbn_eval is None:  # Only use deprecated param if new one is not provided
+            hparams["use_dbn_eval"] = dbn
+    
+    # Override postprocessor configuration if provided
+    if use_dbn_eval is not None:
+        hparams["use_dbn_eval"] = use_dbn_eval
+    
+    if eval_dbn_beats_per_bar is not None:
+        hparams["eval_dbn_beats_per_bar"] = eval_dbn_beats_per_bar
+    
+    if eval_dbn_min_bpm is not None:
+        hparams["eval_dbn_min_bpm"] = eval_dbn_min_bpm
+    
+    if eval_dbn_max_bpm is not None:
+        hparams["eval_dbn_max_bpm"] = eval_dbn_max_bpm
+    
+    if eval_dbn_transition_lambda is not None:
+        hparams["eval_dbn_transition_lambda"] = eval_dbn_transition_lambda
 
-    model = PLBeatThis(**checkpoint["hyper_parameters"])
+    model = PLBeatThis(**hparams)
     model.load_state_dict(checkpoint["state_dict"])
     # set correct device and accelerator
     if gpu >= 0:
@@ -236,7 +277,38 @@ if __name__ == "__main__":
         "--dbn",
         default=None,
         action=argparse.BooleanOptionalAction,
-        help="override the option to use madmom postprocessing dbn",
+        help="Override the option to use madmom postprocessing dbn (deprecated, use --use-dbn-eval instead)",
+    )
+    parser.add_argument(
+        "--use-dbn-eval",
+        default=None,
+        action=argparse.BooleanOptionalAction,
+        help="Override whether to use DBN postprocessor for evaluation",
+    )
+    parser.add_argument(
+        "--eval-dbn-beats-per-bar",
+        type=int,
+        nargs='+',
+        default=None,
+        help="Override possible beats per bar for DBN postprocessor"
+    )
+    parser.add_argument(
+        "--eval-dbn-min-bpm",
+        type=float,
+        default=None,
+        help="Override minimum BPM for DBN postprocessor"
+    )
+    parser.add_argument(
+        "--eval-dbn-max-bpm",
+        type=float,
+        default=None,
+        help="Override maximum BPM for DBN postprocessor"
+    )
+    parser.add_argument(
+        "--eval-dbn-transition-lambda",
+        type=float,
+        default=None,
+        help="Override transition lambda for DBN postprocessor"
     )
     parser.add_argument(
         "--aggregation-type",
@@ -247,5 +319,4 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-
     main(args)

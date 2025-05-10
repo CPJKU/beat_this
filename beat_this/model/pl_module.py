@@ -14,7 +14,9 @@ from pytorch_lightning import LightningModule
 import beat_this.model.loss
 from beat_this.inference import split_predict_aggregate
 from beat_this.model.beat_tracker import BeatThis
-from beat_this.model.postprocessor import Postprocessor
+from beat_this.model.postprocessor import MinimalPostprocessor
+from beat_this.model.madmom_postprocessor import DbnPostprocessor
+from beat_this.postprocessing_interface import Postprocessor as PostprocessorInterface
 from beat_this.utils import replace_state_dict_key
 
 
@@ -35,7 +37,12 @@ class PLBeatThis(LightningModule):
         loss_type="shift_tolerant_weighted_bce",
         warmup_steps=1000,
         max_epochs=100,
-        use_dbn=False,
+        use_dbn=False,  # Deprecated, use use_dbn_eval instead
+        use_dbn_eval=False,
+        eval_dbn_beats_per_bar=(3, 4),
+        eval_dbn_min_bpm=55.0,
+        eval_dbn_max_bpm=215.0,
+        eval_dbn_transition_lambda=100,
         eval_trim_beats=5,
         sum_head=True,
         partial_transformers=True,
@@ -90,9 +97,29 @@ class PLBeatThis(LightningModule):
                 "loss_type must be one of 'shift_tolerant_weighted_bce', 'weighted_bce', 'bce'"
             )
 
-        self.postprocessor = Postprocessor(
-            type="dbn" if use_dbn else "minimal", fps=fps
-        )
+        # Handle deprecated use_dbn parameter
+        if use_dbn and not use_dbn_eval:
+            import warnings
+            warnings.warn(
+                "The 'use_dbn' parameter is deprecated and will be removed in a future version. "
+                "Use 'use_dbn_eval' instead.",
+                DeprecationWarning,
+                stacklevel=2
+            )
+            use_dbn_eval = use_dbn
+
+        # Configure evaluation postprocessor
+        if use_dbn_eval:
+            self.eval_postprocessor = DbnPostprocessor(
+                fps=self.fps,
+                beats_per_bar=eval_dbn_beats_per_bar,
+                min_bpm=eval_dbn_min_bpm,
+                max_bpm=eval_dbn_max_bpm,
+                transition_lambda=eval_dbn_transition_lambda
+            )
+        else:
+            self.eval_postprocessor = MinimalPostprocessor(fps=self.fps)
+
         self.eval_trim_beats = eval_trim_beats
         self.metrics = Metrics(eval_trim_beats=eval_trim_beats)
 
@@ -210,7 +237,7 @@ class PLBeatThis(LightningModule):
         # compute loss
         losses = self._compute_loss(batch, model_prediction)
         # postprocess the predictions
-        postp_beat, postp_downbeat = self.postprocessor(
+        postp_beat, postp_downbeat = self.eval_postprocessor(
             model_prediction["beat"],
             model_prediction["downbeat"],
             batch["padding_mask"],
@@ -269,7 +296,7 @@ class PLBeatThis(LightningModule):
             key: value.unsqueeze(0) for key, value in model_prediction.items()
         }
         # postprocess the predictions
-        postp_beat, postp_downbeat = self.postprocessor(
+        postp_beat, postp_downbeat = self.eval_postprocessor(
             model_prediction["beat"], model_prediction["downbeat"], None
         )
         # compute the metrics
@@ -282,28 +309,45 @@ class PLBeatThis(LightningModule):
         # (filtering on dimensionality idea taken from Kaparthy's nano-GPT)
         params = [
             {
-                "params": (
-                    p for p in self.parameters() if p.requires_grad and p.ndim >= 2
-                ),
+                "params": [
+                    p
+                    for n, p in self.named_parameters()
+                    if p.dim() >= 2 and not n.startswith("model.frontend.norm")
+                ],
                 "weight_decay": self.weight_decay,
             },
             {
-                "params": (
-                    p for p in self.parameters() if p.requires_grad and p.ndim <= 1
-                ),
-                "weight_decay": 0,
+                "params": [
+                    p
+                    for n, p in self.named_parameters()
+                    if p.dim() < 2 or n.startswith("model.frontend.norm")
+                ],
+                "weight_decay": 0.0,
             },
         ]
+        opt = optimizer(params, lr=self.lr, betas=(0.9, 0.95))
+        # compute the cosine decay from the number of training steps
+        # in case of NaN or unreasonable warmup_steps
+        warmup_steps = self.warmup_steps
+        if not 0 <= warmup_steps < 1e5:
+            warmup_steps = 1000
 
-        optimizer = optimizer(params, lr=self.lr)
-
-        self.lr_scheduler = CosineWarmupScheduler(
-            optimizer, self.warmup_steps, self.trainer.estimated_stepping_batches
+        scheduler = CosineWarmupScheduler(
+            optimizer=opt,
+            warmup=warmup_steps,
+            max_iters=self.max_epochs,
+            # give a little bump to the LR at the very end
+            # (could be useful for evaluation when we use the last checkpoint)
+            raise_last=1,
+            raise_to=0.5,
         )
-
-        result = dict(optimizer=optimizer)
-        result["lr_scheduler"] = {"scheduler": self.lr_scheduler, "interval": "step"}
-        return result
+        scheduler_config = {
+            "scheduler": scheduler,
+            "interval": "epoch",
+            "frequency": 1,
+            "monitor": "val_loss",
+        }
+        return [opt], [scheduler_config]
 
     def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
         # remove _orig_mod prefixes for compiled models
@@ -319,51 +363,88 @@ class PLBeatThis(LightningModule):
 
 class Metrics:
     def __init__(self, eval_trim_beats: int) -> None:
-        self.min_beat_time = eval_trim_beats
+        self.eval_trim_beats = eval_trim_beats
 
     def __call__(self, truth, preds, step) -> Any:
-        truth = mir_eval.beat.trim_beats(truth, min_beat_time=self.min_beat_time)
-        preds = mir_eval.beat.trim_beats(preds, min_beat_time=self.min_beat_time)
-        if (
-            step == "val"
-        ):  # limit the metrics that are computed during validation to speed up training
-            fmeasure = mir_eval.beat.f_measure(truth, preds)
-            cemgil = mir_eval.beat.cemgil(truth, preds)
-            return {"F-measure": fmeasure, "Cemgil": cemgil}
-        elif step == "test":  # compute all metrics during testing
-            CMLc, CMLt, AMLc, AMLt = mir_eval.beat.continuity(truth, preds)
-            fmeasure = mir_eval.beat.f_measure(truth, preds)
-            cemgil = mir_eval.beat.cemgil(truth, preds)
-            return {"F-measure": fmeasure, "Cemgil": cemgil, "CMLt": CMLt, "AMLt": AMLt}
+        """
+        Compute metrics for a single piece.
+        The metrics are computed for the validation set, and also for the test set (default).
+        """
+        # cut a few beats at the beginning and end of the ground truth
+        # (because they are less consistent in the annotations, e.g. drum fills)
+        trimmed_truth = truth.copy()
+        if self.eval_trim_beats > 0 and len(trimmed_truth) > 2 * self.eval_trim_beats + 1:
+            trimmed_truth = trimmed_truth[
+                self.eval_trim_beats : -self.eval_trim_beats
+            ]
+        # compute the metrics on the validation set only if already fitted, on train and validation and test
+        if preds.size == 0:
+            # return zeroes
+            return {
+                "F-measure": 0,
+                "P-score": 0,
+                "R-score": 0,
+                "AMLt": 0,
+                "AMLc": 0,
+                "Informaation Gain": 0,
+            }
+        if step == "val":
+            # compute only the f-measure as a cheap approximation for validation when finding hyperparameters
+            # we need at least one value to compute the metric
+            return mir_eval.beat.f_measure(trimmed_truth, preds)
         else:
-            raise ValueError("step must be either val or test")
+            # val-short and test set: let's compute precise values for publishing (costlier)
+            scores = {}
+            scores["F-measure"], scores["P-score"], scores[
+                "R-score"
+            ] = mir_eval.beat.f_measure(trimmed_truth, preds, beta=1.0)
+            scores["AMLt"] = mir_eval.beat.continuity(trimmed_truth, preds)["total"]
+            scores["AMLc"] = mir_eval.beat.continuity(
+                trimmed_truth, preds, continuity_phase=False
+            )["total"]
+            scores["Information Gain"] = mir_eval.beat.information_gain(
+                trimmed_truth, preds
+            )
+            return scores
 
 
 class CosineWarmupScheduler(torch.optim.lr_scheduler._LRScheduler):
     """
-    Cosine annealing over `max_iters` steps with `warmup` linear warmup steps.
-    Optionally re-raises the learning rate for the final `raise_last` fraction
-    of total training time to `raise_to` of the full learning rate, again with
-    a linear warmup (useful for stochastic weight averaging).
+    Learning rate scheduler with warmup and cosine decay.
     """
 
     def __init__(self, optimizer, warmup, max_iters, raise_last=0, raise_to=0.5):
         self.warmup = warmup
-        self.max_num_iters = int((1 - raise_last) * max_iters)
+        self.max_num_iters = max_iters
+        self.raise_last = raise_last
         self.raise_to = raise_to
         super().__init__(optimizer)
 
     def get_lr(self):
-        lr_factor = self.get_lr_factor(step=self.last_epoch)
+        lr_factor = self.get_lr_factor(epoch=self.last_epoch)
         return [base_lr * lr_factor for base_lr in self.base_lrs]
 
-    def get_lr_factor(self, step):
-        if step < self.max_num_iters:
-            progress = step / self.max_num_iters
-            lr_factor = 0.5 * (1 + np.cos(np.pi * progress))
-            if step <= self.warmup:
-                lr_factor *= step / self.warmup
+    def get_lr_factor(self, step=None, epoch=None):
+        """
+        Get a learning rate factor based on the current epoch or step.
+        """
+        if step is None:
+            if epoch is None:
+                step = 0
+            else:
+                step = epoch  # epochs for us
+        if self.raise_last > 0 and step >= self.max_num_iters - self.raise_last:
+            return self.raise_to
+        if step < self.warmup:
+            return float(step) / float(max(1, self.warmup))
+        elif step >= self.max_num_iters:
+            return 0.0
         else:
-            progress = (step - self.max_num_iters) / self.warmup
-            lr_factor = self.raise_to * min(progress, 1)
-        return lr_factor
+            return 0.5 * (
+                1.0
+                + np.cos(
+                    np.pi
+                    * float(step - self.warmup)
+                    / float(max(1, self.max_num_iters - self.warmup))
+                )
+            )

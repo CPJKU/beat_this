@@ -89,7 +89,12 @@ def main(args):
         loss_type=args.loss,
         warmup_steps=args.warmup_steps,
         max_epochs=args.max_epochs,
-        use_dbn=args.dbn,
+        use_dbn=args.dbn,  # For backward compatibility
+        use_dbn_eval=args.use_dbn_eval,
+        eval_dbn_beats_per_bar=args.eval_dbn_beats_per_bar,
+        eval_dbn_min_bpm=args.eval_dbn_min_bpm,
+        eval_dbn_max_bpm=args.eval_dbn_max_bpm,
+        eval_dbn_transition_lambda=args.eval_dbn_transition_lambda,
         eval_trim_beats=args.eval_trim_beats,
         sum_head=args.sum_head,
         partial_transformers=args.partial_transformers,
@@ -195,7 +200,38 @@ if __name__ == "__main__":
         "--dbn",
         default=False,
         action=argparse.BooleanOptionalAction,
-        help="use madmom postprocessing DBN",
+        help="Use madmom postprocessing DBN (deprecated, use --use-dbn-eval instead)",
+    )
+    parser.add_argument(
+        "--use-dbn-eval",
+        default=False,
+        action=argparse.BooleanOptionalAction,
+        help="Use DBN postprocessor for evaluation",
+    )
+    parser.add_argument(
+        "--eval-dbn-beats-per-bar",
+        type=int,
+        nargs='+',
+        default=(3, 4),
+        help="Possible beats per bar for DBN postprocessor (default: %(default)s)."
+    )
+    parser.add_argument(
+        "--eval-dbn-min-bpm",
+        type=float,
+        default=55.0,
+        help="Minimum BPM for DBN postprocessor (default: %(default)s)."
+    )
+    parser.add_argument(
+        "--eval-dbn-max-bpm",
+        type=float,
+        default=215.0,
+        help="Maximum BPM for DBN postprocessor (default: %(default)s)."
+    )
+    parser.add_argument(
+        "--eval-dbn-transition-lambda",
+        type=float,
+        default=100.0,
+        help="Transition lambda for DBN postprocessor (default: %(default)s)."
     )
     parser.add_argument(
         "--eval-trim-beats",
@@ -248,30 +284,30 @@ if __name__ == "__main__":
         help="The factor to oversample the long pieces in the dataset. Set to 0 to only take one excerpt for each piece.",
     )
     parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Random seed to set deterministic operations. Change for model ensembles to get different initializations.",
+    )
+    parser.add_argument(
         "--val",
         default=True,
         action=argparse.BooleanOptionalAction,
-        help="Train on all data, including validation data, escluding test data. The validation metrics will still be computed, but they won't carry any meaning.",
-    )
-    parser.add_argument(
-        "--hung-data",
-        default=False,
-        action=argparse.BooleanOptionalAction,
-        help="Limit the training to Hung et al. data. The validation will still be computed on all datasets.",
+        help="Use a validation set (not using more data for training)",
     )
     parser.add_argument(
         "--fold",
         type=int,
         default=None,
-        help="If given, the CV fold number to *not* train on (0-based).",
+        help="Which fold to use, in the 8-fold scenario, from 0 to 7",
     )
     parser.add_argument(
-        "--seed",
-        type=int,
-        default=0,
-        help="Seed for the random number generators.",
+        "--hung-data",
+        default=False,
+        action=argparse.BooleanOptionalAction,
+        help="Use the Hungarian data in training",
     )
-
     args = parser.parse_args()
-
+    if args.seed is None:
+        args.seed = 0
     main(args)
