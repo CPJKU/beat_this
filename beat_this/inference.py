@@ -6,7 +6,8 @@ import torch
 import torch.nn.functional as F
 
 from beat_this.model.beat_tracker import BeatThis
-from beat_this.model.postprocessor import Postprocessor
+from beat_this.model.postprocessor import MinimalPostprocessor
+from beat_this.postprocessing_interface import Postprocessor as PostprocessorInterface
 from beat_this.preprocessing import LogMelSpect, load_audio
 from beat_this.utils import replace_state_dict_key, save_beat_tsv
 
@@ -288,21 +289,52 @@ class Audio2Beats(Audio2Frames):
     Class for extracting beat and downbeat positions (in seconds) from an audio tensor.
 
     Args:
-        checkpoint_path (str): Path to the model checkpoint file. It can be a local path, a URL, or a key from the CHECKPOINT_URL dictionary. Default is "final0", which will load the model trained on all data except GTZAN with seed 0.
+        checkpoint_path (str): Path to the model checkpoint file. It can be a local path, a URL, 
+                               or a key from the CHECKPOINT_URL dictionary. Default is "final0", 
+                               which will load the model trained on all data except GTZAN with seed 0.
         device (str): Device to use for inference. Default is "cpu".
         float16 (bool): Whether to use half precision floating point arithmetic. Default is False.
-        dbn (bool): Whether to use the madmom DBN for post-processing. Default is False.
+        postprocessor (PostprocessorInterface, optional): Postprocessor to use for converting logits 
+                                                        to beat and downbeat times. If None, defaults 
+                                                        to MinimalPostprocessor.
+        dbn (bool, deprecated): Whether to use the madmom DBN for post-processing. Default is False.
+                               This parameter is deprecated and will be removed in a future version.
+                               Use the postprocessor parameter instead.
     """
 
     def __init__(
-        self, checkpoint_path="final0", device="cpu", float16=False, dbn=False
+        self,
+        checkpoint_path="final0",
+        device="cpu",
+        float16=False,
+        postprocessor: PostprocessorInterface = None,
+        dbn: bool = False  # Deprecated flag
     ):
         super().__init__(checkpoint_path, device, float16)
-        self.frames2beats = Postprocessor(type="dbn" if dbn else "minimal")
+
+        if dbn:  # Handle deprecated flag for backward compatibility
+            import warnings
+            warnings.warn(
+                "The 'dbn' flag is deprecated and will be removed in a future version. "
+                "Use the 'postprocessor' parameter instead.",
+                DeprecationWarning,
+                stacklevel=2
+            )
+            if postprocessor is None:
+                # Lazy import of DbnPostprocessor only when needed
+                from beat_this.model.madmom_postprocessor import DbnPostprocessor
+                model_fps = self.spect.sample_rate / self.spect.hop_length
+                postprocessor = DbnPostprocessor(fps=int(model_fps))
+
+        if postprocessor is not None:
+            self.frames2beats = postprocessor
+        else:  # Default to MinimalPostprocessor
+            model_fps = self.spect.sample_rate / self.spect.hop_length
+            self.frames2beats = MinimalPostprocessor(fps=int(model_fps))
 
     def __call__(self, signal, sr):
         beat_logits, downbeat_logits = super().__call__(signal, sr)
-        return self.frames2beats(beat_logits, downbeat_logits)
+        return self.frames2beats(beat_logits, downbeat_logits, padding_mask=None)
 
 
 class File2Beats(Audio2Beats):

@@ -1,8 +1,9 @@
 # beat_this/postprocessing_interface.py
 import numpy as np
 import torch
-from typing import Protocol, Tuple, List
+from typing import Protocol, Tuple, List, runtime_checkable
 
+@runtime_checkable
 class Postprocessor(Protocol):
     """Interface for beat and downbeat postprocessors."""
     def __call__(

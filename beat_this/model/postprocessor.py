@@ -5,87 +5,70 @@ import torch
 import torch.nn.functional as F
 from einops import rearrange
 
+from beat_this.postprocessing_interface import Postprocessor as PostprocessorInterface
 
-class Postprocessor:
-    """Postprocessor for the beat and downbeat predictions of the model.
-    The postprocessor takes the (framewise) model predictions (beat and downbeats) and the padding mask,
-    and returns the postprocessed beat and downbeat as list of times in seconds.
-    The beats and downbeats can be 1D arrays (for only 1 piece) or 2D arrays, if a batch of pieces is considered.
-    The output dimensionality is the same as the input dimensionality.
-    Two types of postprocessing are implemented:
-        - minimal: a simple postprocessing that takes the maximum of the framewise predictions,
-        and removes adjacent peaks.
-        - dbn: a postprocessing based on the Dynamic Bayesian Network proposed by Böck et al.
+
+class MinimalPostprocessor(PostprocessorInterface):
+    """Minimal postprocessor for beat and downbeat predictions.
+    
+    This postprocessor applies a simple algorithm that:
+    1. Finds peaks in the beat and downbeat logits
+    2. Removes adjacent peaks
+    3. Converts frame indices to timestamps
+    4. Aligns downbeats to the nearest beats
+    
     Args:
-        type (str): the type of postprocessing to apply. Either "minimal" or "dbn". Default is "minimal".
-        fps (int): the frames per second of the model framewise predictions. Default is 50.
+        fps (int): Frames per second of the model predictions. Default is 50.
     """
 
-    def __init__(self, type: str = "minimal", fps: int = 50):
-        assert type in ["minimal", "dbn"]
-        self.type = type
+    def __init__(self, fps: int = 50):
         self.fps = fps
-        if type == "dbn":
-            from madmom.features.downbeats import DBNDownBeatTrackingProcessor
-
-            self.dbn = DBNDownBeatTrackingProcessor(
-                beats_per_bar=[3, 4],
-                min_bpm=55.0,
-                max_bpm=215.0,
-                fps=self.fps,
-                transition_lambda=100,
-            )
-
+    
     def __call__(
         self,
-        beat: torch.Tensor,
-        downbeat: torch.Tensor,
+        beat_logits: torch.Tensor,
+        downbeat_logits: torch.Tensor,
         padding_mask: torch.Tensor | None = None,
-    ) -> tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[list[np.ndarray], list[np.ndarray]]:
         """
-        Apply postprocessing to the input beat and downbeat tensors. Works with batched and unbatched inputs.
-        The output is a list of times in seconds, or a list of lists of times in seconds, if the input is batched.
-
+        Apply minimal postprocessing to the input beat and downbeat logits.
+        Works with batched and unbatched inputs.
+        
         Args:
-            beat (torch.Tensor): The input beat tensor.
-            downbeat (torch.Tensor): The input downbeat tensor.
-            padding_mask (torch.Tensor, optional): The padding mask tensor. Defaults to None.
-
+            beat_logits (torch.Tensor): Beat prediction logits
+            downbeat_logits (torch.Tensor): Downbeat prediction logits
+            padding_mask (torch.Tensor, optional): Padding mask tensor. Defaults to None.
+            
         Returns:
-            torch.Tensor: The postprocessed beat tensor.
-            torch.Tensor: The postprocessed downbeat tensor.
+            tuple[list[np.ndarray], list[np.ndarray]]: Processed beat and downbeat times in seconds
         """
-        batched = False if beat.ndim == 1 else True
+        was_batched = beat_logits.ndim > 1
         if padding_mask is None:
-            padding_mask = torch.ones_like(beat, dtype=torch.bool)
+            padding_mask = torch.ones_like(beat_logits, dtype=torch.bool)
 
-        # if beat and downbeat are 1D tensors, add a batch dimension
-        if not batched:
-            beat = beat.unsqueeze(0)
-            downbeat = downbeat.unsqueeze(0)
+        # if inputs are 1D tensors, add a batch dimension
+        if not was_batched:
+            beat_logits = beat_logits.unsqueeze(0)
+            downbeat_logits = downbeat_logits.unsqueeze(0)
             padding_mask = padding_mask.unsqueeze(0)
 
-        if self.type == "minimal":
-            postp_beat, postp_downbeat = self.postp_minimal(
-                beat, downbeat, padding_mask
-            )
-        elif self.type == "dbn":
-            postp_beat, postp_downbeat = self.postp_dbn(beat, downbeat, padding_mask)
-        else:
-            raise ValueError("Invalid postprocessing type")
+        # run the main processing
+        postp_beat, postp_downbeat = self._process_batch(
+            beat_logits, downbeat_logits, padding_mask
+        )
 
-        # remove the batch dimension if it was added
-        if not batched:
-            postp_beat = postp_beat[0]
-            postp_downbeat = postp_downbeat[0]
+        # if input wasn't batched, we still need to return lists
+        if not was_batched:
+            # Convert to lists with a single element
+            postp_beat = [postp_beat[0]]
+            postp_downbeat = [postp_downbeat[0]]
 
-        # update the model prediction dict
         return postp_beat, postp_downbeat
-
-    def postp_minimal(self, beat, downbeat, padding_mask):
+    
+    def _process_batch(self, beat_logits, downbeat_logits, padding_mask):
         # concatenate beat and downbeat in the same tensor of shape (B, T, 2)
         packed_pred = rearrange(
-            [beat, downbeat], "c b t -> b t c", b=beat.shape[0], t=beat.shape[1], c=2
+            [beat_logits, downbeat_logits], "c b t -> b t c", b=beat_logits.shape[0], t=beat_logits.shape[1], c=2
         )
         # set padded elements to -1000 (= probability zero even in float64) so they don't influence the maxpool
         pred_logits = packed_pred.masked_fill(~padding_mask.unsqueeze(-1), -1000)
@@ -99,19 +82,19 @@ class Postprocessor:
         pred_peaks = pred_peaks > 0
         #  rearrange back to two tensors of shape (B, T)
         beat_peaks, downbeat_peaks = rearrange(
-            pred_peaks, "(c b) t -> c b t", b=beat.shape[0], t=beat.shape[1], c=2
+            pred_peaks, "(c b) t -> c b t", b=beat_logits.shape[0], t=beat_logits.shape[1], c=2
         )
         # run the piecewise operations
         with ThreadPoolExecutor() as executor:
             postp_beat, postp_downbeat = zip(
                 *executor.map(
-                    self._postp_minimal_item, beat_peaks, downbeat_peaks, padding_mask
+                    self._process_single_item, beat_peaks, downbeat_peaks, padding_mask
                 )
             )
-        return postp_beat, postp_downbeat
+        return list(postp_beat), list(postp_downbeat)
 
-    def _postp_minimal_item(self, padded_beat_peaks, padded_downbeat_peaks, mask):
-        """Function to compute the operations that must be computed piece by piece, and cannot be done in batch."""
+    def _process_single_item(self, padded_beat_peaks, padded_downbeat_peaks, mask):
+        """Process a single item in the batch."""
         # unpad the predictions by truncating the padding positions
         beat_peaks = padded_beat_peaks[mask]
         downbeat_peaks = padded_downbeat_peaks[mask]
@@ -134,43 +117,6 @@ class Postprocessor:
         # remove duplicate downbeat times (if some db were moved to the same position)
         downbeat_time = np.unique(downbeat_time)
         return beat_time, downbeat_time
-
-    def postp_dbn(self, beat, downbeat, padding_mask):
-        beat_prob = beat.double().sigmoid()
-        downbeat_prob = downbeat.double().sigmoid()
-        # limit lower and upper bound, since 0 and 1 create problems in the DBN
-        epsilon = 1e-5
-        beat_prob = beat_prob * (1 - epsilon) + epsilon / 2
-        downbeat_prob = downbeat_prob * (1 - epsilon) + epsilon / 2
-        with ThreadPoolExecutor() as executor:
-            postp_beat, postp_downbeat = zip(
-                *executor.map(
-                    self._postp_dbn_item, beat_prob, downbeat_prob, padding_mask
-                )
-            )
-        return postp_beat, postp_downbeat
-
-    def _postp_dbn_item(self, padded_beat_prob, padded_downbeat_prob, mask):
-        """Function to compute the operations that must be computed piece by piece, and cannot be done in batch."""
-        # unpad the predictions by truncating the padding positions
-        beat_prob = padded_beat_prob[mask]
-        downbeat_prob = padded_downbeat_prob[mask]
-        # build an artificial multiclass prediction, as suggested by Böck et al.
-        # again we limit the lower bound to avoid problems with the DBN
-        epsilon = 1e-5
-        combined_act = np.vstack(
-            (
-                np.maximum(
-                    beat_prob.cpu().numpy() - downbeat_prob.cpu().numpy(), epsilon / 2
-                ),
-                downbeat_prob.cpu().numpy(),
-            )
-        ).T
-        # run the DBN
-        dbn_out = self.dbn(combined_act)
-        postp_beat = dbn_out[:, 0]
-        postp_downbeat = dbn_out[dbn_out[:, 1] == 1][:, 0]
-        return postp_beat, postp_downbeat
 
 
 def deduplicate_peaks(peaks, width=1) -> np.ndarray:
