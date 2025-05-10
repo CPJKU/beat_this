@@ -13,6 +13,8 @@ except ImportError:
     tqdm = None
 
 from beat_this.inference import File2File
+from beat_this.model.postprocessor import MinimalPostprocessor
+from beat_this.model.madmom_postprocessor import DbnPostprocessor
 
 
 def get_parser():
@@ -64,7 +66,39 @@ def get_parser():
         "--dbn",
         default=False,
         action=argparse.BooleanOptionalAction,
-        help="Override the option to use madmom's postprocessing DBN.",
+        help="Override the option to use madmom's postprocessing DBN. Deprecated: use --postprocessor=dbn instead.",
+    )
+    parser.add_argument(
+        "--postprocessor",
+        type=str,
+        choices=['minimal', 'dbn'],
+        default='minimal',
+        help="Which postprocessor to use (default: %(default)s)."
+    )
+    parser.add_argument(
+        "--dbn-beats-per-bar",
+        type=int,
+        nargs='+',
+        default=[3, 4],
+        help="Possible beats per bar for DBN postprocessor (default: %(default)s)."
+    )
+    parser.add_argument(
+        "--dbn-min-bpm",
+        type=float,
+        default=55.0,
+        help="Minimum BPM for DBN postprocessor (default: %(default)s)."
+    )
+    parser.add_argument(
+        "--dbn-max-bpm",
+        type=float,
+        default=215.0,
+        help="Maximum BPM for DBN postprocessor (default: %(default)s)."
+    )
+    parser.add_argument(
+        "--dbn-transition-lambda",
+        type=float,
+        default=100.0,
+        help="Transition lambda for DBN postprocessor (default: %(default)s)."
     )
     parser.add_argument(
         "--gpu",
@@ -103,7 +137,9 @@ def derive_output_path(input_path, suffix, append, output=None, parent=None):
 
 
 def run(
-    inputs, model, output, suffix, append, skip_existing, touch_first, dbn, gpu, float16
+    inputs, model, output, suffix, append, skip_existing, touch_first, 
+    dbn, postprocessor, dbn_beats_per_bar, dbn_min_bpm, dbn_max_bpm, dbn_transition_lambda,
+    gpu, float16
 ):
     # determine device
     if torch.cuda.is_available() and gpu >= 0:
@@ -111,8 +147,34 @@ def run(
     else:
         device = torch.device("cpu")
 
+    # Create postprocessor based on arguments
+    model_fps = 50  # This is a placeholder - ideally get this dynamically
+
+    if dbn and postprocessor == 'minimal':
+        # Handle deprecated flag for backward compatibility
+        import warnings
+        warnings.warn(
+            "The '--dbn' flag is deprecated. Use '--postprocessor=dbn' instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        postprocessor = 'dbn'
+
+    if postprocessor == 'minimal':
+        postproc_instance = MinimalPostprocessor(fps=model_fps)
+    elif postprocessor == 'dbn':
+        postproc_instance = DbnPostprocessor(
+            fps=model_fps,
+            beats_per_bar=tuple(dbn_beats_per_bar),
+            min_bpm=dbn_min_bpm,
+            max_bpm=dbn_max_bpm,
+            transition_lambda=dbn_transition_lambda
+        )
+    else:
+        raise ValueError(f"Unknown postprocessor type: {postprocessor}")
+
     # prepare model
-    file2file = File2File(model, device, float16, dbn)
+    file2file = File2File(model, device, float16, postprocessor=postproc_instance)
 
     # process inputs
     inputs = [Path(item) for item in inputs]
