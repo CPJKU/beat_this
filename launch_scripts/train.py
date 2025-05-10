@@ -74,6 +74,18 @@ def main(args):
         "frontend": args.frontend_dropout,
         "transformer": args.transformer_dropout,
     }
+
+    # Handle deprecated dbn parameter
+    if args.dbn and args.use_dbn_eval is None:
+        import warnings
+        warnings.warn(
+            "The 'dbn' parameter is deprecated and will be removed in a future version. "
+            "Use 'use_dbn_eval' instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        args.use_dbn_eval = args.dbn
+
     pl_model = PLBeatThis(
         spect_dim=128,
         fps=50,
@@ -89,7 +101,7 @@ def main(args):
         loss_type=args.loss,
         warmup_steps=args.warmup_steps,
         max_epochs=args.max_epochs,
-        use_dbn=args.dbn,  # For backward compatibility
+        # Configure evaluation postprocessor
         use_dbn_eval=args.use_dbn_eval,
         eval_dbn_beats_per_bar=args.eval_dbn_beats_per_bar,
         eval_dbn_min_bpm=args.eval_dbn_min_bpm,

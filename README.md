@@ -311,6 +311,51 @@ for seed in 0 1 2; do
 done
 ```
 
+## Using Different Postprocessors
+
+The beat_this model now supports configurable postprocessors for evaluation. You can choose between a minimal postprocessor and a DBN-based postprocessor with configurable parameters.
+
+### Training with Minimal Postprocessor (Default)
+
+```bash
+python launch_scripts/train.py --no-use-dbn-eval
+```
+
+### Training with DBN Postprocessor
+
+```bash
+python launch_scripts/train.py --use-dbn-eval
+```
+
+### Custom DBN Parameters
+
+```bash
+python launch_scripts/train.py --use-dbn-eval \
+  --eval-dbn-beats-per-bar 4 \
+  --eval-dbn-min-bpm 60.0 \
+  --eval-dbn-max-bpm 180.0 \
+  --eval-dbn-transition-lambda 50.0
+```
+
+### Evaluating Models with Different Postprocessors
+
+You can override the postprocessor settings when evaluating saved models:
+
+```bash
+# Evaluate with minimal postprocessor
+python launch_scripts/compute_paper_metrics.py --models checkpoints/model.ckpt --no-use-dbn-eval
+
+# Evaluate with default DBN postprocessor
+python launch_scripts/compute_paper_metrics.py --models checkpoints/model.ckpt --use-dbn-eval
+
+# Evaluate with custom DBN settings
+python launch_scripts/compute_paper_metrics.py --models checkpoints/model.ckpt \
+  --use-dbn-eval \
+  --eval-dbn-beats-per-bar 4 \
+  --eval-dbn-min-bpm 60.0 \
+  --eval-dbn-max-bpm 180.0 \
+  --eval-dbn-transition-lambda 50.0
+```
 
 ## Reusing the loss
 
