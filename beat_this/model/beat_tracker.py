@@ -9,12 +9,18 @@ from einops import rearrange
 from einops.layers.torch import Rearrange
 from rotary_embedding_torch import RotaryEmbedding
 from torch import nn
+from huggingface_hub import PyTorchModelHubMixin
 
 from beat_this.model import roformer
 from beat_this.utils import replace_state_dict_key
 
 
-class BeatThis(nn.Module):
+class BeatThis(
+    nn.Module,
+    PyTorchModelHubMixin,
+    repo_url="https://github.com/CPJKU/beat_this",
+    license="mit",
+):
     """
     A neural network model for beat tracking. It is composed of three main components:
     - a frontend that processes the input spectrogram,
