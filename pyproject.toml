@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "beat-this"
+version = "0.1"
+description = "Beat This! beat tracker"
+readme = "README.md"
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "Topic :: Multimedia :: Sound/Audio :: Analysis",
+    "Development Status :: 5 - Production/Stable",
+    "Programming Language :: Python :: 3",
+]
+authors = [
+    {name = "Francesco Foscarin", email = "francesco.foscarin@jku.at"},
+    {name = "Jan Schlüter", email = "jan.schlueter@jku.at"},
+]
+requires-python = ">=3"
+dependencies = [
+    "numpy>=1.20",
+    "torch>=2",
+    "torchaudio",
+    "einops",
+    "rotary-embedding-torch",
+    "soxr",
+]
+license = "MIT"
+license-files = ["LICENSE"]
+
+[tool.setuptools.package-dir]
+beat_this = "beat_this"
+
+[project.urls]
+Repository = "https://github.com/CPJKU/beat_this"
+Issues = "https://github.com/CPJKU/beat_this/issues"
+
+[project.scripts]
+beat_this = "beat_this.cli:main"
