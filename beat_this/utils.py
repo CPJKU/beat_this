@@ -23,19 +23,18 @@ def filename_to_augmentation(filename):
     return augmentations
 
 
-def save_beat_tsv(beats: np.ndarray, downbeats: np.ndarray, outpath: str) -> None:
+def infer_beat_numbers(beats: np.ndarray, downbeats: np.ndarray) -> np.ndarray:
     """
-    Save beat information to a tab-separated file in the standard .beats format:
-    each line has a time in seconds, a tab, and a beat number (1 = downbeat).
+    From beat and downbeat times, infer a number for each beat such that each downbeat
+    is associated with a 1 and beats in between are counted upwards.
     The function requires that all downbeats are also listed as beats.
 
     Args:
         beats (numpy.ndarray): Array of beat positions in seconds (including downbeats).
         downbeats (numpy.ndarray): Array of downbeat positions in seconds.
-        outpath (str): Path to the output TSV file.
 
     Returns:
-        None
+        numbers (numpy.ndarray): Array of integer beat numbers.
     """
     # check if all downbeats are beats
     if not np.all(np.isin(downbeats, beats)):
@@ -62,20 +61,43 @@ def save_beat_tsv(beats: np.ndarray, downbeats: np.ndarray, outpath: str) -> Non
         )
         start_counter = 1
 
-    # write the beat file
-    Path(outpath).parent.mkdir(parents=True, exist_ok=True)
+    # assemble the beat numbers
+    numbers = []
     counter = start_counter
     downbeats = chain(downbeats, [-1])
     next_downbeat = next(downbeats)
+    for beat in beats:
+        if beat == next_downbeat:
+            counter = 1
+            next_downbeat = next(downbeats)
+        else:
+            counter += 1
+        numbers.append(counter)
+    return np.asarray(numbers)
+
+
+def save_beat_tsv(beats: np.ndarray, downbeats: np.ndarray, outpath: str) -> None:
+    """
+    Save beat information to a tab-separated file in the standard .beats format:
+    each line has a time in seconds, a tab, and a beat number (1 = downbeat).
+    The function requires that all downbeats are also listed as beats.
+
+    Args:
+        beats (numpy.ndarray): Array of beat positions in seconds (including downbeats).
+        downbeats (numpy.ndarray): Array of downbeat positions in seconds.
+        outpath (str): Path to the output TSV file.
+
+    Returns:
+        None
+    """
+    # infer beat numbers
+    numbers = infer_beat_numbers(beats, downbeats)
+
+    # write the beat file
+    Path(outpath).parent.mkdir(parents=True, exist_ok=True)
     try:
         with open(outpath, "w") as f:
-            for beat in beats:
-                if beat == next_downbeat:
-                    counter = 1
-                    next_downbeat = next(downbeats)
-                else:
-                    counter += 1
-                f.write(f"{beat}\t{counter}\n")
+            f.writelines(f"{beat}\t{number}\n" for beat, number in zip(beats, numbers))
     except KeyboardInterrupt:
         outpath.unlink()  # avoid half-written files
 
