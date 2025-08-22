@@ -6,13 +6,16 @@ import argparse
 import sys
 from pathlib import Path
 
+import numpy as np
 import torch
+
 try:
     import tqdm
 except ImportError:
     tqdm = None
 
-from beat_this.inference import File2File
+from beat_this.inference import File2File, load_audio
+from beat_this.utils import save_beat_tsv
 
 
 def get_parser():
@@ -77,6 +80,11 @@ def get_parser():
         action="store_true",
         help="If given, uses half precision floating point arithmetics. Required for flash attention on GPU. (default: %(default)s)",
     )
+    parser.add_argument(
+        "--activations",
+        action="store_true",
+        help="If given, saves the raw activations with a .npy suffix.",
+    )
     return parser
 
 
@@ -103,7 +111,17 @@ def derive_output_path(input_path, suffix, append, output=None, parent=None):
 
 
 def run(
-    inputs, model, output, suffix, append, skip_existing, touch_first, dbn, gpu, float16
+    inputs,
+    model,
+    output,
+    suffix,
+    append,
+    skip_existing,
+    touch_first,
+    dbn,
+    gpu,
+    float16,
+    activations,
 ):
     # determine device
     if torch.cuda.is_available() and gpu >= 0:
@@ -113,6 +131,21 @@ def run(
 
     # prepare model
     file2file = File2File(model, device, float16, dbn)
+    if activations:
+
+        def process(audiofile, outfile):
+            wav, sr = load_audio(audiofile)
+            spect = file2file.signal2spect(wav, sr)
+            beat_logits, downbeat_logits = file2file.spect2frames(spect)
+            np.save(
+                outfile.with_suffix(".npy"),
+                np.vstack([beat_logits.cpu().numpy(), downbeat_logits.cpu().numpy()]),
+            )
+            beats, downbeats = file2file.frames2beats(beat_logits, downbeat_logits)
+            save_beat_tsv(beats, downbeats, outfile)
+
+    else:
+        process = file2file
 
     # process inputs
     inputs = [Path(item) for item in inputs]
@@ -122,7 +155,7 @@ def run(
         # special case: single input file
         if output is None or output.is_dir():
             output = derive_output_path(inputs[0], suffix, append, output)
-        file2file(inputs[0], output)
+        process(inputs[0], output)
     else:
         # multiple inputs: first collect tasks so we can have a progress bar
         tasks = []
@@ -149,7 +182,7 @@ def run(
             elif skip_existing and output.exists():
                 continue
             try:
-                file2file(item, output)
+                process(item, output)
             except Exception:
                 print(
                     f'Could not process "{item}". Rerun with this file alone for details.',
