@@ -19,8 +19,12 @@ def main(args):
 
     params_str = f"{'noval ' if not args.val else ''}{'hung ' if args.hung_data else ''}{'fold' + str(args.fold) + ' ' if args.fold is not None else ''}{args.loss}-h{args.transformer_dim}-aug{args.tempo_augmentation}{args.pitch_augmentation}{args.mask_augmentation}{' nosumH ' if not args.sum_head else ''}{' nopartialT ' if not args.partial_transformers else ''}"
     if args.logger == "wandb":
+        if args.resume_checkpoint and args.resume_id:
+            wandb_args = dict(id=args.resume_id, resume="must")
+        else:
+            wandb_args = {}
         logger = WandbLogger(
-            project="beat_this", name=f"{args.name} {params_str}".strip()
+            project="beat_this", name=f"{args.name} {params_str}".strip(), **wandb_args
         )
     else:
         logger = None
@@ -124,7 +128,7 @@ def main(args):
         check_val_every_n_epoch=args.val_frequency,
     )
 
-    trainer.fit(pl_model, datamodule)
+    trainer.fit(pl_model, datamodule, ckpt_path=args.resume_checkpoint)
     trainer.test(pl_model, datamodule)
 
 
@@ -270,6 +274,18 @@ if __name__ == "__main__":
         type=int,
         default=0,
         help="Seed for the random number generators.",
+    )
+    parser.add_argument(
+        "--resume-checkpoint",
+        type=str,
+        default=None,
+        help="Resume training from a local checkpoint."
+    )
+    parser.add_argument(
+        "--resume-id",
+        type=str,
+        default=None,
+        help="When resuming with --resume-checkpoint, optionally provide the wandb id to continue logging to."
     )
 
     args = parser.parse_args()
