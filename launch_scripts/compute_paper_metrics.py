@@ -8,6 +8,7 @@ from pytorch_lightning import Trainer, seed_everything
 from beat_this.dataset import BeatDataModule
 from beat_this.inference import load_checkpoint
 from beat_this.model.pl_module import PLBeatThis
+from beat_this.utils import infer_beat_numbers
 
 # for repeatability
 seed_everything(0, workers=True)
@@ -28,7 +29,10 @@ def main(args):
         )
         # predict
         metrics, dataset, preds, piece = compute_predictions(
-            model, trainer, datamodule.predict_dataloader()
+            model,
+            trainer,
+            datamodule.predict_dataloader(),
+            return_preds=args.dump_predictions,
         )
 
         # compute averaged metrics
@@ -48,8 +52,16 @@ def main(args):
             for d, value in v.items():
                 print(f"{d}: {value}")
             print("------")
+        # dump predictions
+        if args.dump_predictions:
+            write_predictions(args.dump_predictions, preds, piece)
     else:  # multiple models
         if args.aggregation_type == "mean-std":
+            if args.dump_predictions:
+                print(
+                    "cannot dump predictions when doing inference for multiple models"
+                )
+                return
             # computing result variability for the same dataset and different model seeds
             # create datamodule only once, as we assume it is the same for all models
             checkpoint = load_checkpoint(args.models[0])
@@ -88,6 +100,7 @@ def main(args):
             # computing results in the K-fold setting. Every fold has a different dataset
             all_piece_metrics = []
             all_piece_dataset = []
+            all_piece_preds = []
             all_piece = []
             # create datamodule for each model
             for i_model, checkpoint_path in enumerate(args.models):
@@ -102,10 +115,14 @@ def main(args):
                 )
                 # predict
                 metrics, dataset, preds, piece = compute_predictions(
-                    model, trainer, datamodule.predict_dataloader()
+                    model,
+                    trainer,
+                    datamodule.predict_dataloader(),
+                    return_preds=args.dump_predictions,
                 )
                 all_piece_metrics.append(metrics)
                 all_piece_dataset.append(dataset)
+                all_piece_preds.extend(preds)
                 all_piece.append(piece)
             # aggregate across folds
             all_piece_metrics = {
@@ -132,6 +149,9 @@ def main(args):
                 for d, value in v.items():
                     print(f"{d}: {round(value,3)}")
                 print("------")
+            # dump predictions
+            if args.dump_predictions:
+                write_predictions(args.dump_predictions, all_piece_preds, all_piece)
         else:
             raise ValueError(f"Unknown aggregation type {args.aggregation_type}")
 
@@ -190,16 +210,29 @@ def plmodel_setup(checkpoint, eval_trim_beats, dbn, gpu):
     return model, trainer
 
 
-def compute_predictions(model, trainer, predict_dataloader):
+def compute_predictions(model, trainer, predict_dataloader, return_preds=False):
     print("Computing predictions ...")
     out = trainer.predict(model, predict_dataloader)
     metrics = [o[0] for o in out]
-    preds = [o[1] for o in out]
+    if return_preds:
+        preds = [model.postprocessor(o[1]["beat"][0], o[1]["downbeat"][0]) for o in out]
+    else:
+        preds = None
     dataset = np.asarray([o[2][0] for o in out])
     piece = np.asarray([o[3][0] for o in out])
     # convert metrics from list of per-batch dictionaries to a single dictionary with np arrays as values
     metrics = {k: np.asarray([m[k] for m in metrics]) for k in metrics[0]}
     return metrics, dataset, preds, piece
+
+
+def write_predictions(fn, preds, piece):
+    np.savez(
+        fn,
+        **{
+            name: np.vstack([beats, infer_beat_numbers(beats, downbeats)]).T
+            for name, (beats, downbeats) in zip(piece, preds)
+        },
+    )
 
 
 if __name__ == "__main__":
@@ -245,6 +278,13 @@ if __name__ == "__main__":
         choices=("mean-std", "k-fold"),
         default="mean-std",
         help="Type of aggregation to use for multiple models; ignored if only one model is given",
+    )
+    parser.add_argument(
+        "--dump-predictions",
+        metavar="FILENAME",
+        type=str,
+        default=None,
+        help="File to write predictions to, in .npz format (optional)",
     )
 
     args = parser.parse_args()
