@@ -3,6 +3,7 @@ Model definitions for the Beat This! beat tracker.
 """
 
 from collections import OrderedDict
+import contextlib
 
 import torch
 from einops import rearrange
@@ -317,7 +318,11 @@ class SumHead(nn.Module):
         beat, downbeat = rearrange(beat_downbeat, "b t c -> c b t", c=2)
         # aggregate beats and downbeats prediction
         # autocast to float16 disabled to avoid numerical issues causing NaNs
-        with torch.autocast(beat.device.type, enabled=False):
+        if torch.amp.is_autocast_available(beat.device.type):
+            disable_autocast = torch.autocast(beat.device.type, enabled=False)
+        else:
+            disable_autocast = contextlib.nullcontext()
+        with disable_autocast:
             beat = beat.float() + downbeat.float()
         return {"beat": beat, "downbeat": downbeat}
 
