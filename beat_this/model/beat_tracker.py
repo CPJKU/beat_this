@@ -318,10 +318,11 @@ class SumHead(nn.Module):
         beat, downbeat = rearrange(beat_downbeat, "b t c -> c b t", c=2)
         # aggregate beats and downbeats prediction
         # autocast to float16 disabled to avoid numerical issues causing NaNs
-        if torch.amp.is_autocast_available(beat.device.type):
-            disable_autocast = torch.autocast(beat.device.type, enabled=False)
-        else:
+        if hasattr(torch.amp, 'is_autocast_available') and not torch.amp.is_autocast_available(beat.device.type):
+            # but do not try disabling if the device does not support autocast
             disable_autocast = contextlib.nullcontext()
+        else:
+            disable_autocast = torch.autocast(beat.device.type, enabled=False)
         with disable_autocast:
             beat = beat.float() + downbeat.float()
         return {"beat": beat, "downbeat": downbeat}
