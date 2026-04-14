@@ -28,6 +28,10 @@ The beat tracker requires Python with a set of packages installed:
 
 Finally, install our beat tracker with:
 ```bash
+pip install beat-this
+```
+For the development version, use:
+```bash
 pip install https://github.com/CPJKU/beat_this/archive/main.zip
 ```
 
