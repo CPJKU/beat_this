@@ -35,6 +35,7 @@ beat_this = "beat_this"
 [project.urls]
 Repository = "https://github.com/CPJKU/beat_this"
 Issues = "https://github.com/CPJKU/beat_this/issues"
+Changelog = "https://github.com/CPJKU/beat_this/blob/main/CHANGELOG.md"
 
 [project.scripts]
 beat_this = "beat_this.cli:main"
