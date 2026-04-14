@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "beat-this"
-version = "0.1"
+version = "1.1.0"
 description = "Beat This! beat tracker"
 readme = "README.md"
 classifiers = [
