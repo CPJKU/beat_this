@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Training script: Support resuming from previous checkpoint
 - Migrate to pyproject.toml (thanks to @JacobLinCool)
 - Support non-CUDA accelerator chips (thanks to @tillt)
+- Published on PyPI (thanks to @MarvinSchenkel)
 
 ## [1.0] - 2024-10-18
 
