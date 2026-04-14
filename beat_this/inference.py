@@ -26,7 +26,7 @@ def load_checkpoint(checkpoint_path: str, device: str | torch.device = "cpu") ->
     """
     try:
         # try interpreting as local file name
-        weights_only = {'weights_only': True} if torch.__version__ >= "2" else {}
+        weights_only = {"weights_only": True} if torch.__version__ >= "2" else {}
         return torch.load(checkpoint_path, map_location=device, **weights_only)
     except FileNotFoundError:
         try:
@@ -35,9 +35,7 @@ def load_checkpoint(checkpoint_path: str, device: str | torch.device = "cpu") ->
                 or str(checkpoint_path).startswith("http://")
             ):
                 # interpret it as a name of one of our checkpoints
-                checkpoint_url = (
-                    f"{CHECKPOINT_URL}/{checkpoint_path}.ckpt"
-                )
+                checkpoint_url = f"{CHECKPOINT_URL}/{checkpoint_path}.ckpt"
                 file_name = f"beat_this-{checkpoint_path}.ckpt"
             else:
                 # try interpreting as a URL

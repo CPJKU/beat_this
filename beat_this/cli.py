@@ -2,6 +2,7 @@
 """
 Beat This! command line inference tool.
 """
+
 import argparse
 import sys
 from pathlib import Path

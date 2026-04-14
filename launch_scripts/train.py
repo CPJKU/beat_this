@@ -279,13 +279,13 @@ if __name__ == "__main__":
         "--resume-checkpoint",
         type=str,
         default=None,
-        help="Resume training from a local checkpoint."
+        help="Resume training from a local checkpoint.",
     )
     parser.add_argument(
         "--resume-id",
         type=str,
         default=None,
-        help="When resuming with --resume-checkpoint, optionally provide the wandb id to continue logging to."
+        help="When resuming with --resume-checkpoint, optionally provide the wandb id to continue logging to.",
     )
 
     args = parser.parse_args()

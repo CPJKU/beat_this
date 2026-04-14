@@ -1,9 +1,10 @@
-import soundfile as sf
-import numpy as np
-import torch
 from pathlib import Path
 
-from beat_this.inference import File2Beats, Audio2Frames
+import numpy as np
+import soundfile as sf
+import torch
+
+from beat_this.inference import Audio2Frames, File2Beats
 
 
 def test_File2Beat():
