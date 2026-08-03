@@ -177,27 +177,25 @@ def run(
             tasks = tqdm.tqdm(tasks)
         failures = []
         for item, output in tasks:
-            output_created = False
+            output_existed = output.exists()
             if touch_first:
                 try:
-                    output_existed = output.exists()
                     output.touch(exist_ok=not skip_existing)
-                    output_created = not output_existed
                 except FileExistsError:
                     continue
-            elif skip_existing and output.exists():
+            elif skip_existing and output_existed:
                 continue
             try:
                 process(item, output)
             except Exception as exc:
-                if output_created:
+                if not output_existed:
                     output.unlink(missing_ok=True)
                 failures.append((item, exc))
                 print(
                     f'Could not process "{item}": {exc}',
                     file=sys.stderr,
                 )
-        return int(bool(failures))
+        return 1 if failures else 0
 
 
 def main():
