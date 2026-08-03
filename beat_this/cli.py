@@ -157,6 +157,7 @@ def run(
         if output is None or output.is_dir():
             output = derive_output_path(inputs[0], suffix, append, output)
         process(inputs[0], output)
+        return 0
     else:
         # multiple inputs: first collect tasks so we can have a progress bar
         tasks = []
@@ -174,25 +175,31 @@ def run(
         # then process all of them
         if tqdm is not None:
             tasks = tqdm.tqdm(tasks)
+        failures = []
         for item, output in tasks:
+            output_existed = output.exists()
             if touch_first:
                 try:
                     output.touch(exist_ok=not skip_existing)
                 except FileExistsError:
                     continue
-            elif skip_existing and output.exists():
+            elif skip_existing and output_existed:
                 continue
             try:
                 process(item, output)
-            except Exception:
+            except Exception as exc:
+                if not output_existed:
+                    output.unlink(missing_ok=True)
+                failures.append((item, exc))
                 print(
-                    f'Could not process "{item}". Rerun with this file alone for details.',
+                    f'Could not process "{item}": {exc}',
                     file=sys.stderr,
                 )
+        return 1 if failures else 0
 
 
 def main():
-    run(**vars(get_parser().parse_args()))
+    return run(**vars(get_parser().parse_args()))
 
 
 if __name__ == "__main__":
