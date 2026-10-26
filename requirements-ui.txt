@@ -1,0 +1,4 @@
+# GUI only. Inference dependencies are listed in pyproject.toml.
+PySide6-Essentials>=6.6,<7
+soundfile>=0.12
+tqdm>=4

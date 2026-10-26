@@ -8,7 +8,6 @@ Official implementation of the beat tracker from the ISMIR 2024 paper "[Beat Thi
 * [Training](#training)
 * [Reusing the loss](#reusing-the-loss)
 * [Reusing the model](#reusing-the-model)
-* [License](#license)
 * [Citation](#citation)
 
 
@@ -28,10 +27,6 @@ The beat tracker requires Python with a set of packages installed:
 3. To read other audio formats than `.wav`, install `ffmpeg` or another supported backend for `torchaudio`. (`ffmpeg` can be installed via conda or via your operating system.)
 
 Finally, install our beat tracker with:
-```bash
-pip install beat-this
-```
-For the development version, use:
 ```bash
 pip install https://github.com/CPJKU/beat_this/archive/main.zip
 ```
@@ -347,11 +342,6 @@ beat_this = torch.hub.load('CPJKU/beat_this', 'beat_this', 'final0', device='cud
 ### Copy and paste
 
 To copy the BeatThis model into your own project, you will need the [`beat_tracker.py`](beat_this/model/beat_tracker.py) and [`roformer.py`](beat/this/model/roformer.py) files. If you remove the `BeatThis.state_dict()` and `BeatThis._load_from_state_dict()` methods that serve as a workaround for compiled models, then there are no other internal dependencies, only external dependencies (`einops`, `rotary-embedding-torch`).
-
-
-## License
-
-The code and the published model weights are released under the [MIT license](LICENSE). Note that some of the training files are fully copyrighted or under limited Creative Commons licenses, and it is up to the user to assess whether this may impact their use case.
 
 
 ## Citation

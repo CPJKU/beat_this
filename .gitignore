@@ -9,3 +9,10 @@ wandb/
 .vscode/
 beat_this.egg-info/
 build/
+# Local desktop environment and startup diagnostics
+.venv-ui/
+.venv-desktop/
+.tools/
+models/
+ui-startup-error.log
+*.lnk

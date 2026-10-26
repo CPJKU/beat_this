@@ -32,6 +32,9 @@ license-files = ["LICENSE"]
 [tool.setuptools.package-dir]
 beat_this = "beat_this"
 
+[tool.setuptools.package-data]
+beat_this = ["translations_en.json"]
+
 [project.urls]
 Repository = "https://github.com/CPJKU/beat_this"
 Issues = "https://github.com/CPJKU/beat_this/issues"
@@ -39,3 +42,9 @@ Changelog = "https://github.com/CPJKU/beat_this/blob/main/CHANGELOG.md"
 
 [project.scripts]
 beat_this = "beat_this.cli:main"
+
+[project.optional-dependencies]
+desktop = ["PySide6-Essentials>=6.6,<7", "soundfile>=0.12", "tqdm>=4"]
+
+[project.gui-scripts]
+beat_this_ui = "beat_this.desktop:main"
